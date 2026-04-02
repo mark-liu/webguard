@@ -1,0 +1,75 @@
+[package]
+name = "webguard-mcp"
+version = "0.1.0"
+edition = "2024"
+description = "Secure MCP server — scans web content for prompt injection before it enters LLM context"
+license = "MIT"
+repository = "https://github.com/mark-liu/webguard-mcp-rs"
+keywords = ["mcp", "security", "prompt-injection", "llm"]
+categories = ["command-line-utilities", "web-programming"]
+
+[[bin]]
+name = "webguard-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# MCP protocol
+rmcp = { version = "1", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
+
+# Pattern matching
+aho-corasick = "1"
+regex = "1"
+
+# HTML processing
+scraper = "0.23"
+htmd = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# URL / networking
+url = "2"
+ipnetwork = "0.21"
+
+# Unicode
+unicode-normalization = "0.1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Signals
+signal-hook = "0.3"
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Base64
+base64 = "0.22"
+
+# HTML entity decoding
+htmlescape = "0.3"
+
+# Percent decoding
+percent-encoding = "2"
+
+# Error handling
+anyhow = "1"
+
+# JSON Schema (must match rmcp's re-exported version)
+schemars = "1"
+
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

@@ -1,0 +1,22 @@
+# Example external pattern file for WebGuard MCP.
+#
+# Place YAML files in this directory (or configure patterns_dir in config.yaml)
+# to add custom detection patterns. Files are loaded at startup and on SIGHUP.
+#
+# Severity levels: critical, high, medium, low
+# Types: literal (Aho-Corasick, fast), regex (compiled, structural patterns)
+
+patterns:
+  # Uncomment and modify these examples:
+
+  # - id: custom-001
+  #   category: instruction-override
+  #   severity: high
+  #   type: literal
+  #   value: "override all safety measures"
+
+  # - id: custom-002
+  #   category: exfil-instruction
+  #   severity: critical
+  #   type: regex
+  #   value: "(?i)extract\\s+(and\\s+)?send\\s+(to|via)"

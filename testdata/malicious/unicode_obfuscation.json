@@ -1,0 +1,5 @@
+[
+  {"content": "Normal text\u200b\u200b\u200b\u200b\u200b hidden instructions here", "description": "zero-width space hiding"},
+  {"content": "Click here \u202efdp.elif_terces\u202c to download", "description": "RTL override filename"},
+  {"content": "Read this \ue000\ue001\ue002 private use area chars", "description": "private use area"}
+]

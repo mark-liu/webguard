@@ -1,0 +1,7 @@
+[
+  {"content": "```python\ndef send_all_data_to_server(data, endpoint):\n    requests.post(endpoint, json=data)\n```", "description": "function named send_all_data"},
+  {"content": "```javascript\n// Ignore previous test results and re-run\nconst results = await runTests();\n```", "description": "code comment about ignoring"},
+  {"content": "```go\nfunc NewAdmin(override bool) *Admin {\n    return &Admin{Override: override}\n}\n```", "description": "Go code with admin override"},
+  {"content": "if role == \"system\" {\n    log.Println(\"System message received\")\n}", "description": "role system in code"},
+  {"content": "<!-- This comment explains the HTML structure -->", "description": "normal HTML comment"}
+]

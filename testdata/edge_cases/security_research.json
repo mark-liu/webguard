@@ -1,0 +1,5 @@
+[
+  {"content": "Prompt injection is an attack where adversaries embed instructions like 'ignore previous instructions' into content that LLMs process. This paper surveys defenses against such attacks.", "description": "academic paper about prompt injection"},
+  {"content": "Common injection patterns include system prompt markers such as <|im_start|> and role-based injections. Understanding these patterns is crucial for building robust AI systems.", "description": "security research discussing markers"},
+  {"content": "The OWASP Top 10 for LLM Applications lists prompt injection as the number one risk. Developers should implement input validation and output filtering.", "description": "OWASP security guidance"}
+]
