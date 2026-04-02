@@ -1,15 +1,15 @@
 [package]
-name = "webguard-mcp"
+name = "webguard"
 version = "0.1.0"
 edition = "2024"
 description = "Secure MCP server — scans web content for prompt injection before it enters LLM context"
 license = "MIT"
-repository = "https://github.com/mark-liu/webguard-mcp-rs"
+repository = "https://github.com/mark-liu/webguard"
 keywords = ["mcp", "security", "prompt-injection", "llm"]
 categories = ["command-line-utilities", "web-programming"]
 
 [[bin]]
-name = "webguard-mcp"
+name = "webguard"
 path = "src/main.rs"
 
 [dependencies]

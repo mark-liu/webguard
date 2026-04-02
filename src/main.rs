@@ -11,7 +11,7 @@ use std::path::PathBuf;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
-#[command(name = "webguard-mcp", about = "Secure MCP server for prompt injection scanning")]
+#[command(name = "webguard", about = "Secure MCP server for prompt injection scanning")]
 struct Cli {
     /// Path to config.yaml
     #[arg(long, short)]
@@ -27,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     if cli.version {
-        println!("webguard-mcp {VERSION}");
+        println!("webguard {VERSION}");
         return Ok(());
     }
 

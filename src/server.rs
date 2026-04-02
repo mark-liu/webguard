@@ -484,7 +484,7 @@ impl WebGuardServer {
 impl ServerHandler for WebGuardServer {
     fn get_info(&self) -> rmcp::model::ServerInfo {
         let mut info = rmcp::model::ServerInfo::default();
-        info.server_info.name = "webguard-mcp".into();
+        info.server_info.name = "webguard".into();
         info.server_info.version = self.version.clone();
         info
     }

@@ -2224,7 +2224,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "webguard-mcp"
+name = "webguard"
 version = "0.1.0"
 dependencies = [
  "aho-corasick",
