@@ -1,6 +1,7 @@
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, USER_AGENT};
 use std::collections::HashMap;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 
 use super::ssrf::{resolve_and_validate, validate_url};
 
@@ -57,18 +58,52 @@ pub async fn fetch(
         }
     }
 
+    // Disable automatic redirects — we follow manually to re-validate each hop
     let client = reqwest::Client::builder()
         .timeout(opts.timeout)
-        .redirect(reqwest::redirect::Policy::limited(MAX_REDIRECTS))
+        .redirect(reqwest::redirect::Policy::none())
         .default_headers(headers)
         .build()
         .map_err(|e| format!("client build error: {e}"))?;
 
-    let response = client
-        .get(url.as_str())
-        .send()
-        .await
-        .map_err(|e| format!("fetch error: {e}"))?;
+    // Follow redirects manually with SSRF re-validation per hop
+    let mut current_url = url.to_string();
+    let mut redirect_count = 0usize;
+
+    let response = loop {
+        let resp = client
+            .get(&current_url)
+            .send()
+            .await
+            .map_err(|e| format!("fetch error: {e}"))?;
+
+        if resp.status().is_redirection() {
+            if redirect_count >= MAX_REDIRECTS {
+                return Err(format!("too many redirects ({MAX_REDIRECTS})"));
+            }
+            let location = resp
+                .headers()
+                .get("location")
+                .and_then(|v| v.to_str().ok())
+                .ok_or("redirect with no location header")?;
+
+            // Resolve relative redirects against current URL
+            let next_url = url::Url::parse(location)
+                .or_else(|_| url::Url::parse(&current_url).and_then(|base| base.join(location)))
+                .map_err(|e| format!("invalid redirect URL: {e}"))?;
+
+            // Re-validate redirect target against SSRF rules
+            let _ = validate_url(next_url.as_str())?;
+            let redirect_host = next_url.host_str().ok_or("no host in redirect")?.to_string();
+            let _ = resolve_and_validate(&redirect_host)?;
+
+            current_url = next_url.to_string();
+            redirect_count += 1;
+            continue;
+        }
+
+        break resp;
+    };
 
     let status_code = response.status().as_u16();
     let content_type = response
@@ -77,26 +112,35 @@ pub async fn fetch(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
-    let final_url = response.url().to_string();
+    let final_url = current_url;
 
-    // Read body with size limit
-    let body = response
-        .bytes()
-        .await
-        .map_err(|e| format!("body read error: {e}"))?;
-
-    let body = if opts.max_body_size > 0 && body.len() as i64 > opts.max_body_size {
-        body[..opts.max_body_size as usize].to_vec()
+    // Stream body with size limit — don't buffer beyond max_body_size
+    let limit = if opts.max_body_size > 0 {
+        opts.max_body_size as usize
     } else {
-        body.to_vec()
+        DEFAULT_MAX_BODY_SIZE as usize
     };
+
+    let mut body = Vec::with_capacity(limit.min(1024 * 64)); // pre-alloc max 64KB
+    let mut stream = response.bytes_stream();
+    use futures_util::StreamExt;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("body read error: {e}"))?;
+        let remaining = limit.saturating_sub(body.len());
+        if remaining == 0 {
+            break;
+        }
+        let to_take = chunk.len().min(remaining);
+        body.extend_from_slice(&chunk[..to_take]);
+    }
 
     Ok(FetchResult {
         status_code,
         content_type,
         body,
         final_url,
-        redirect_count: 0, // reqwest doesn't expose redirect count directly
+        redirect_count,
     })
 }
 

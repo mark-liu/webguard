@@ -2,7 +2,7 @@ use regex::Regex;
 use std::sync::LazyLock;
 use unicode_normalization::UnicodeNormalization;
 
-use super::encoding::{decode_url_encoded, detect_base64, EncodedBlob};
+use super::encoding::{decode_hex_sequences, decode_url_encoded, detect_base64, EncodedBlob};
 
 static HTML_COMMENT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?s)<!--(.*?)-->").unwrap());
@@ -41,6 +41,9 @@ pub fn preprocess(raw: &str) -> PreprocessResult {
 
     // Step 6: URL-decode
     let text = decode_url_encoded(&text);
+
+    // Step 6b: Hex-decode (\xNN sequences)
+    let text = decode_hex_sequences(&text);
 
     // Step 7: Unicode NFC normalisation
     let text: String = text.nfc().collect();
