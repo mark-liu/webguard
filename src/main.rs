@@ -1,4 +1,6 @@
 #![allow(dead_code)] // Public API surface is broader than what main.rs wires up
+#![allow(clippy::collapsible_if)] // let-chains are idiomatic edition 2024
+#![allow(clippy::derivable_impls)]
 
 mod audit;
 mod classify;
