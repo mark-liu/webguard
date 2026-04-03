@@ -388,13 +388,15 @@ impl WebGuardServer {
                 *pattern_hits.entry(m.pattern_id.clone()).or_default() += 1;
             }
 
-            if let Ok(u) = Url::parse(&entry.url)
-                && let Some(host) = u.host_str()
-                && (entry.verdict == "block" || entry.verdict == "warn")
-            {
-                domain_verdicts
-                    .entry(host.to_string())
-                    .or_insert(entry.verdict.clone());
+            #[allow(clippy::collapsible_if)]
+            if let Ok(u) = Url::parse(&entry.url) {
+                if let Some(host) = u.host_str() {
+                    if entry.verdict == "block" || entry.verdict == "warn" {
+                        domain_verdicts
+                            .entry(host.to_string())
+                            .or_insert(entry.verdict.clone());
+                    }
+                }
             }
 
             total_fetch_ms += entry.fetch_time_ms;
