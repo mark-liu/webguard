@@ -12,5 +12,5 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all
-      - run: cargo clippy -- -D warnings -A clippy::collapsible_if -A clippy::derivable_impls -A clippy::double_ended_iterator_last -A clippy::manual_char_range
+      - run: cargo clippy -- -D warnings -A clippy::collapsible_if -A clippy::derivable_impls -A clippy::double_ended_iterator_last
       - run: cargo fmt --check
