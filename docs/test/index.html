@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>WebGuard Test Pages</title></head>
+<body>
+<h1>WebGuard Test Pages</h1>
+<p>Static test pages for verifying <a href="https://github.com/mark-liu/webguard">webguard</a> prompt injection detection.</p>
+<ul>
+  <li><a href="clean.html">clean.html</a> — benign content (expect: pass)</li>
+  <li><a href="inject.html">inject.html</a> — instruction override in HTML comment (expect: block)</li>
+  <li><a href="exfil.html">exfil.html</a> — data exfiltration instruction (expect: block)</li>
+  <li><a href="encoded.html">encoded.html</a> — base64-encoded payload (expect: block)</li>
+  <li><a href="authority.html">authority.html</a> — authority claim (expect: block)</li>
+</ul>
+</body>
+</html>
