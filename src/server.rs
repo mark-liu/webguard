@@ -158,15 +158,10 @@ impl WebGuardServer {
         let raw_mode = raw.unwrap_or(false);
         let body = &fetch_result.body;
 
-        // Full extraction for scanning
-        let scan_content = match fetch::extract::extract(body, &fetch_result.content_type) {
-            Ok(c) => c,
-            Err(e) => {
-                return Ok(CallToolResult::error(vec![Content::text(format!(
-                    "Content extraction error: {e}"
-                ))]));
-            }
-        };
+        // Raw HTML for scanning — the classifier's preprocess() handles HTML
+        // comment extraction, tag stripping, entity decoding, etc. Feeding
+        // extracted markdown would lose HTML comments where attackers hide payloads.
+        let scan_content = String::from_utf8_lossy(body).to_string();
 
         // Clean extraction for output (or raw)
         let output_content = if raw_mode {
