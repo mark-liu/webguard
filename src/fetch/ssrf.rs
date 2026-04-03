@@ -69,9 +69,7 @@ pub fn validate_url(raw: &str) -> std::result::Result<Url, String> {
         let after_scheme = &raw[auth_start + 3..];
         // Strip optional userinfo@
         let host_part = after_scheme.split('@').last().unwrap_or(after_scheme);
-        let host_end = host_part
-            .find(['/', ':', '?'])
-            .unwrap_or(host_part.len());
+        let host_end = host_part.find(['/', ':', '?']).unwrap_or(host_part.len());
         let raw_host = &host_part[..host_end];
         if raw_host.contains('%') {
             return Err("URL-encoded hostname".into());
@@ -93,9 +91,7 @@ pub fn validate_url(raw: &str) -> std::result::Result<Url, String> {
     if let Some(auth_start) = raw.find("://") {
         let after_scheme = &raw[auth_start + 3..];
         let host_part = after_scheme.split('@').last().unwrap_or(after_scheme);
-        let host_end = host_part
-            .find(['/', ':', '?'])
-            .unwrap_or(host_part.len());
+        let host_end = host_part.find(['/', ':', '?']).unwrap_or(host_part.len());
         if is_octal_ip(&host_part[..host_end]) {
             return Err("octal IP notation".into());
         }
