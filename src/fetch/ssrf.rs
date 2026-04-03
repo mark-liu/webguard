@@ -1,5 +1,7 @@
 use ipnetwork::IpNetwork;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
+#[cfg(test)]
+use std::net::Ipv6Addr;
 use std::sync::LazyLock;
 use url::Url;
 

@@ -8,5 +8,5 @@ pub mod stage1;
 pub mod stage2;
 
 pub use engine::{ClassifyOptions, Engine, Sensitivity};
-pub use result::{Match, Result, Severity, Verdict};
-pub use stage1::CompiledPatterns;
+#[allow(unused_imports)]
+pub use result::{Match, Severity, Verdict};

@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Public API surface is broader than what main.rs wires up
+
 mod audit;
 mod classify;
 mod config;

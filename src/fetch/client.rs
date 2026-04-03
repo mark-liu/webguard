@@ -1,7 +1,6 @@
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, USER_AGENT};
 use std::collections::HashMap;
 use std::time::Duration;
-use tokio::io::AsyncReadExt;
 
 use super::ssrf::{resolve_and_validate, validate_url};
 

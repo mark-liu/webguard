@@ -27,7 +27,7 @@ pub fn extract(html_content: &[u8], _content_type: &str) -> std::result::Result<
 /// Extract clean content for output (boilerplate removed).
 pub fn extract_clean(
     html_content: &[u8],
-    content_type: &str,
+    _content_type: &str,
 ) -> std::result::Result<String, String> {
     let html_str = String::from_utf8_lossy(html_content);
 

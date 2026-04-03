@@ -3,7 +3,7 @@ use regex::Regex;
 
 use super::patterns::{Pattern, PatternType};
 use super::preprocess::PreprocessResult;
-use super::result::{Match, Severity};
+use super::result::Match;
 
 pub struct CompiledPatterns {
     automaton: AhoCorasick,
