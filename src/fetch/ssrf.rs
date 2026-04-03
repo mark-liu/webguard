@@ -1,7 +1,7 @@
 use ipnetwork::IpNetwork;
-use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 #[cfg(test)]
 use std::net::Ipv6Addr;
+use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 use std::sync::LazyLock;
 use url::Url;
 
@@ -15,9 +15,9 @@ static BLOCKED_NETS: LazyLock<Vec<IpNetwork>> = LazyLock::new(|| {
         "169.254.0.0/16".parse().unwrap(), // link-local
         "100.64.0.0/10".parse().unwrap(),  // carrier-grade NAT
         // IPv6
-        "::1/128".parse().unwrap(),        // loopback
-        "fe80::/10".parse().unwrap(),      // link-local
-        "fc00::/7".parse().unwrap(),       // unique local
+        "::1/128".parse().unwrap(),   // loopback
+        "fe80::/10".parse().unwrap(), // link-local
+        "fc00::/7".parse().unwrap(),  // unique local
     ]
 });
 
@@ -30,7 +30,7 @@ static CLOUD_METADATA_IPS: LazyLock<Vec<IpAddr>> = LazyLock::new(|| {
         IpAddr::V4(Ipv4Addr::new(169, 254, 169, 251)), // Oracle
         IpAddr::V4(Ipv4Addr::new(169, 254, 169, 252)), // Oracle
         IpAddr::V4(Ipv4Addr::new(169, 254, 169, 253)), // Oracle
-        "fd00:ec2::254".parse().unwrap(),                // AWS IPv6
+        "fd00:ec2::254".parse().unwrap(),              // AWS IPv6
     ]
 });
 
@@ -42,7 +42,8 @@ pub fn validate_url(raw: &str) -> std::result::Result<Url, String> {
     // Scheme check + HTTP upgrade
     match url.scheme() {
         "http" => {
-            url.set_scheme("https").map_err(|_| "scheme upgrade failed")?;
+            url.set_scheme("https")
+                .map_err(|_| "scheme upgrade failed")?;
         }
         "https" => {}
         other => return Err(format!("unsupported scheme: {other}")),
@@ -169,9 +170,9 @@ fn is_octal_ip(host: &str) -> bool {
     if parts.len() != 4 {
         return false;
     }
-    parts.iter().any(|p| {
-        p.len() > 1 && p.starts_with('0') && p.chars().all(|c| c.is_ascii_digit())
-    })
+    parts
+        .iter()
+        .any(|p| p.len() > 1 && p.starts_with('0') && p.chars().all(|c| c.is_ascii_digit()))
 }
 
 #[cfg(test)]

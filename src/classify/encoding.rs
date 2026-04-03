@@ -15,8 +15,7 @@ pub struct EncodedBlob {
 static BASE64_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[A-Za-z0-9+/\-_]{20,}={0,3}").unwrap());
 
-static HEX_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\\x([0-9a-fA-F]{2})").unwrap());
+static HEX_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\\x([0-9a-fA-F]{2})").unwrap());
 
 pub fn detect_base64(content: &str) -> Vec<EncodedBlob> {
     let mut blobs = Vec::new();
@@ -117,20 +116,14 @@ mod tests {
             Some("hello world".into())
         );
         // Standard without padding
-        assert_eq!(
-            decode_base64("aGVsbG8gd29ybGQ"),
-            Some("hello world".into())
-        );
+        assert_eq!(decode_base64("aGVsbG8gd29ybGQ"), Some("hello world".into()));
         // URL-safe with padding
         assert_eq!(
             decode_base64("aGVsbG8gd29ybGQ="),
             Some("hello world".into())
         );
         // URL-safe without padding
-        assert_eq!(
-            decode_base64("aGVsbG8gd29ybGQ"),
-            Some("hello world".into())
-        );
+        assert_eq!(decode_base64("aGVsbG8gd29ybGQ"), Some("hello world".into()));
         // Invalid
         assert!(decode_base64("!!!").is_none());
     }
@@ -148,16 +141,10 @@ mod tests {
 
     #[test]
     fn test_hex_decoding() {
-        assert_eq!(
-            decode_hex_sequences(r"\x48\x65\x6c\x6c\x6f"),
-            "Hello"
-        );
+        assert_eq!(decode_hex_sequences(r"\x48\x65\x6c\x6c\x6f"), "Hello");
         assert_eq!(decode_hex_sequences(r"mixed \x41 text"), "mixed A text");
         assert_eq!(decode_hex_sequences("no hex here"), "no hex here");
-        assert_eq!(
-            decode_hex_sequences(r"\x48\x45\x4C\x4C\x4F"),
-            "HELLO"
-        );
+        assert_eq!(decode_hex_sequences(r"\x48\x45\x4C\x4C\x4F"), "HELLO");
         // Null byte
         assert_eq!(decode_hex_sequences(r"\x00"), "\0");
     }

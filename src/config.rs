@@ -86,9 +86,9 @@ where
 {
     let s: Option<String> = Option::deserialize(deserializer)?;
     match s {
-        Some(ref v) if !v.is_empty() => {
-            parse_duration(v).map(Some).map_err(serde::de::Error::custom)
-        }
+        Some(ref v) if !v.is_empty() => parse_duration(v)
+            .map(Some)
+            .map_err(serde::de::Error::custom),
         _ => Ok(None),
     }
 }
@@ -256,9 +256,9 @@ fn match_wildcard(pattern: &str, domain: &str) -> bool {
 }
 
 fn match_any(patterns: &[String], domain: &str) -> bool {
-    patterns.iter().any(|p| {
-        p.eq_ignore_ascii_case(domain) || match_wildcard(p, domain)
-    })
+    patterns
+        .iter()
+        .any(|p| p.eq_ignore_ascii_case(domain) || match_wildcard(p, domain))
 }
 
 fn to_set(items: &[String]) -> HashMap<String, bool> {

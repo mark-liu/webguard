@@ -2,8 +2,7 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use std::sync::LazyLock;
 
-static EXCESSIVE_NEWLINES: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
+static EXCESSIVE_NEWLINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
 
 const FORBIDDEN_TAGS: &[&str] = &["script", "style", "svg", "noscript", "iframe"];
 const BOILERPLATE_TAGS: &[&str] = &["nav", "header", "footer", "aside"];
@@ -19,7 +18,10 @@ pub fn extract(html_content: &[u8], _content_type: &str) -> std::result::Result<
     let md = htmd::convert(&cleaned).map_err(|e| format!("markdown conversion error: {e}"))?;
 
     // Collapse excessive newlines
-    let md = EXCESSIVE_NEWLINES.replace_all(&md, "\n\n").trim().to_string();
+    let md = EXCESSIVE_NEWLINES
+        .replace_all(&md, "\n\n")
+        .trim()
+        .to_string();
 
     Ok(md)
 }
@@ -40,7 +42,10 @@ pub fn extract_clean(
     let cleaned = strip_tags(&html_str, &all_tags);
 
     let md = htmd::convert(&cleaned).map_err(|e| format!("markdown conversion error: {e}"))?;
-    let md = EXCESSIVE_NEWLINES.replace_all(&md, "\n\n").trim().to_string();
+    let md = EXCESSIVE_NEWLINES
+        .replace_all(&md, "\n\n")
+        .trim()
+        .to_string();
 
     Ok(md)
 }

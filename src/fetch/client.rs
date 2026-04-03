@@ -34,10 +34,7 @@ pub struct FetchResult {
     pub redirect_count: usize,
 }
 
-pub async fn fetch(
-    raw_url: &str,
-    opts: &FetchOptions,
-) -> std::result::Result<FetchResult, String> {
+pub async fn fetch(raw_url: &str, opts: &FetchOptions) -> std::result::Result<FetchResult, String> {
     // Validate URL
     let url = validate_url(raw_url)?;
     let host = url.host_str().ok_or("no host")?.to_string();
@@ -93,7 +90,10 @@ pub async fn fetch(
 
             // Re-validate redirect target against SSRF rules
             let _ = validate_url(next_url.as_str())?;
-            let redirect_host = next_url.host_str().ok_or("no host in redirect")?.to_string();
+            let redirect_host = next_url
+                .host_str()
+                .ok_or("no host in redirect")?
+                .to_string();
             let _ = resolve_and_validate(&redirect_host)?;
 
             current_url = next_url.to_string();

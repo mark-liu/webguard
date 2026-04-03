@@ -31,10 +31,7 @@ impl CompiledPatterns {
                 }
                 PatternType::Regex => {
                     if let Ok(re) = Regex::new(&pat.value) {
-                        regex_patterns.push(RegexEntry {
-                            re,
-                            pattern_idx: i,
-                        });
+                        regex_patterns.push(RegexEntry { re, pattern_idx: i });
                     }
                 }
             }
@@ -137,8 +134,7 @@ fn deduplicate_matches(mut matches: Vec<Match>) -> Vec<Match> {
     let mut result = Vec::with_capacity(matches.len());
     for m in matches {
         let dominated = result.iter().any(|existing: &Match| {
-            existing.pattern_id == m.pattern_id
-                && existing.offset == m.offset
+            existing.pattern_id == m.pattern_id && existing.offset == m.offset
         });
         if !dominated {
             result.push(m);
@@ -189,10 +185,7 @@ mod tests {
         ] {
             let pp = preprocess(variant);
             let matches = scan_stage1(&pp, &compiled());
-            assert!(
-                !matches.is_empty(),
-                "should match case variant: {variant}"
-            );
+            assert!(!matches.is_empty(), "should match case variant: {variant}");
         }
     }
 

@@ -109,7 +109,11 @@ impl WebGuardServer {
         // Parse URL and extract domain
         let parsed = match Url::parse(&url) {
             Ok(u) => u,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(format!("Invalid URL: {e}"))])),
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Invalid URL: {e}"
+                ))]));
+            }
         };
         let domain = parsed.host_str().unwrap_or("").to_string();
 
@@ -149,7 +153,9 @@ impl WebGuardServer {
                     elapsed,
                     &e,
                 );
-                return Ok(CallToolResult::error(vec![Content::text(format!("Fetch error: {e}"))]));
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Fetch error: {e}"
+                ))]));
             }
         };
         let fetch_dur = fetch_start.elapsed();
@@ -241,9 +247,9 @@ impl WebGuardServer {
 
         // Build response
         let response = match verdict {
-            Verdict::Block => format!(
-                "[BLOCKED: prompt injection detected in content from {url}]\n\n{metadata}"
-            ),
+            Verdict::Block => {
+                format!("[BLOCKED: prompt injection detected in content from {url}]\n\n{metadata}")
+            }
             Verdict::Warn => {
                 let mut content = format!(
                     "⚠️ WARNING: Potential prompt injection detected (score: {:.2})\n\n",
@@ -383,12 +389,12 @@ impl WebGuardServer {
             }
 
             if let Ok(u) = Url::parse(&entry.url) {
-                if let Some(host) = u.host_str() {
-                    if entry.verdict == "block" || entry.verdict == "warn" {
-                        domain_verdicts
-                            .entry(host.to_string())
-                            .or_insert(entry.verdict.clone());
-                    }
+                if let Some(host) = u.host_str()
+                    && (entry.verdict == "block" || entry.verdict == "warn")
+                {
+                    domain_verdicts
+                        .entry(host.to_string())
+                        .or_insert(entry.verdict.clone());
                 }
             }
 
@@ -449,6 +455,7 @@ impl WebGuardServer {
 }
 
 impl WebGuardServer {
+    #[allow(clippy::too_many_arguments)]
     fn log_audit(
         &self,
         url: &str,
@@ -642,10 +649,7 @@ mod tests {
         let logger = audit::Logger::new("", false).unwrap();
         let server = WebGuardServer::new(config, logger, "0.1.0".into(), None);
 
-        assert_eq!(
-            server.config.read().unwrap().sensitivity,
-            "medium"
-        );
+        assert_eq!(server.config.read().unwrap().sensitivity, "medium");
 
         let new_config = Config {
             sensitivity: "high".into(),
@@ -653,9 +657,6 @@ mod tests {
         };
         server.reload_config(new_config, None);
 
-        assert_eq!(
-            server.config.read().unwrap().sensitivity,
-            "high"
-        );
+        assert_eq!(server.config.read().unwrap().sensitivity, "high");
     }
 }

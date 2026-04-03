@@ -13,7 +13,10 @@ use std::path::PathBuf;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
-#[command(name = "webguard", about = "Secure MCP server for prompt injection scanning")]
+#[command(
+    name = "webguard",
+    about = "Secure MCP server for prompt injection scanning"
+)]
 struct Cli {
     /// Path to config.yaml
     #[arg(long, short)]
@@ -34,15 +37,16 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Load config
-    let config_path = cli
-        .config
-        .unwrap_or_else(|| {
-            std::env::var("WEBGUARD_CONFIG_PATH")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| config::Config::default_path())
-        });
+    let config_path = cli.config.unwrap_or_else(|| {
+        std::env::var("WEBGUARD_CONFIG_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| config::Config::default_path())
+    });
     let cfg = config::Config::load(&config_path).unwrap_or_else(|e| {
-        eprintln!("warning: failed to load config from {}: {e}", config_path.display());
+        eprintln!(
+            "warning: failed to load config from {}: {e}",
+            config_path.display()
+        );
         config::Config::default()
     });
 
@@ -69,7 +73,8 @@ async fn main() -> anyhow::Result<()> {
     let audit_logger = audit::Logger::new(&audit_path, cfg.audit.enabled)?;
 
     // Create server
-    let server = server::WebGuardServer::new(cfg, audit_logger, VERSION.to_string(), external_patterns);
+    let server =
+        server::WebGuardServer::new(cfg, audit_logger, VERSION.to_string(), external_patterns);
 
     // Run MCP over stdio
     let service = server.serve(rmcp::transport::io::stdio()).await?;

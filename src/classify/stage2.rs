@@ -76,12 +76,7 @@ fn apply_proximity_bonus(
     }
 }
 
-fn apply_clustering_bonus(
-    matches: &[Match],
-    weights: &mut [f64],
-    max_dist: usize,
-    factor: f64,
-) {
+fn apply_clustering_bonus(matches: &[Match], weights: &mut [f64], max_dist: usize, factor: f64) {
     for i in 0..matches.len() {
         for j in (i + 1)..matches.len() {
             let dist = matches[i].offset.abs_diff(matches[j].offset);

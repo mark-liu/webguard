@@ -36,9 +36,8 @@ pub fn load_external_patterns(dir: &Path) -> std::io::Result<Option<Vec<Pattern>
         }
 
         let content = std::fs::read_to_string(&path)?;
-        let file: ExternalPatternFile = serde_yaml::from_str(&content).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-        })?;
+        let file: ExternalPatternFile = serde_yaml::from_str(&content)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
 
         for ep in file.patterns {
             found_any = true;

@@ -47,10 +47,7 @@ impl Logger {
             fs::create_dir_all(parent)?;
         }
 
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
 
         Ok(Logger {
             file: Some(Mutex::new(file)),
@@ -123,11 +120,7 @@ mod tests {
     #[test]
     fn test_new_creates_parent_dirs() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir
-            .path()
-            .join("deep")
-            .join("nested")
-            .join("audit.jsonl");
+        let path = dir.path().join("deep").join("nested").join("audit.jsonl");
         let logger = Logger::new(path.to_str().unwrap(), true).unwrap();
         assert!(logger.file.is_some());
         assert!(path.exists());

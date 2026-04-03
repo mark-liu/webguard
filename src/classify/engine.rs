@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use super::patterns::{all_patterns, Pattern};
+use super::patterns::{Pattern, all_patterns};
 use super::preprocess::preprocess;
 use super::result::{Match, Result, Severity, Verdict};
-use super::stage1::{scan_stage1, CompiledPatterns};
+use super::stage1::{CompiledPatterns, scan_stage1};
 use super::stage2::score_stage2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,10 +138,7 @@ impl Engine {
     }
 }
 
-pub fn filter_suppressed(
-    matches: Vec<Match>,
-    suppress: &HashMap<String, bool>,
-) -> Vec<Match> {
+pub fn filter_suppressed(matches: Vec<Match>, suppress: &HashMap<String, bool>) -> Vec<Match> {
     if suppress.is_empty() {
         return matches;
     }
@@ -205,19 +202,24 @@ mod tests {
             "unicode escape substitution",
         ];
 
-        for dir in ["malicious/instruction_override.json",
-                     "malicious/authority_claim.json",
-                     "malicious/exfiltration.json",
-                     "malicious/prompt_markers.json",
-                     "malicious/unicode_obfuscation.json",
-                     "malicious/encoded_injection.json",
-                     "malicious/delimiter_injection.json",
-                     "malicious/adversarial.json"] {
+        for dir in [
+            "malicious/instruction_override.json",
+            "malicious/authority_claim.json",
+            "malicious/exfiltration.json",
+            "malicious/prompt_markers.json",
+            "malicious/unicode_obfuscation.json",
+            "malicious/encoded_injection.json",
+            "malicious/delimiter_injection.json",
+            "malicious/adversarial.json",
+        ] {
             let payloads = load_test_payloads(dir);
             for payload in payloads {
-                let is_known_gap = known_gaps
-                    .iter()
-                    .any(|g| payload.description.to_lowercase().contains(&g.to_lowercase()));
+                let is_known_gap = known_gaps.iter().any(|g| {
+                    payload
+                        .description
+                        .to_lowercase()
+                        .contains(&g.to_lowercase())
+                });
                 if is_known_gap {
                     continue; // skip known detection gaps
                 }
@@ -315,7 +317,10 @@ mod tests {
             );
             assert_eq!(result.stage, 1, "critical should exit at stage 1");
             assert!(
-                result.matches.iter().any(|m| m.severity == Severity::Critical),
+                result
+                    .matches
+                    .iter()
+                    .any(|m| m.severity == Severity::Critical),
                 "should have critical severity match"
             );
         }
