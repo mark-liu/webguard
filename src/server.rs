@@ -651,7 +651,8 @@ fn safe_truncate(s: &mut String, max_bytes: usize) {
     if s.len() <= max_bytes {
         return;
     }
-    let truncate_at = s.char_indices()
+    let truncate_at = s
+        .char_indices()
         .map(|(i, c)| i + c.len_utf8())
         .take_while(|end| *end <= max_bytes)
         .last()
@@ -712,7 +713,10 @@ mod tests {
         ];
         for u in evil_urls {
             let parsed = Url::parse(u).unwrap();
-            assert!(!is_doc_url(&parsed), "untrusted domain should NOT be doc URL: {u}");
+            assert!(
+                !is_doc_url(&parsed),
+                "untrusted domain should NOT be doc URL: {u}"
+            );
         }
     }
 

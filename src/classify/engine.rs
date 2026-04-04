@@ -515,9 +515,15 @@ mod tests {
         let filtered = filter_suppressed(matches, &suppress);
         // Critical ac-001 survives, Medium ac-005 is suppressed, io-001 untouched
         assert_eq!(filtered.len(), 2);
-        assert!(filtered.iter().any(|m| m.pattern_id == "ac-001"), "Critical match must survive");
+        assert!(
+            filtered.iter().any(|m| m.pattern_id == "ac-001"),
+            "Critical match must survive"
+        );
         assert!(filtered.iter().any(|m| m.pattern_id == "io-001"));
-        assert!(!filtered.iter().any(|m| m.pattern_id == "ac-005"), "Non-critical match should be suppressed");
+        assert!(
+            !filtered.iter().any(|m| m.pattern_id == "ac-005"),
+            "Non-critical match should be suppressed"
+        );
     }
 
     #[test]
