@@ -1,5 +1,6 @@
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, USER_AGENT};
 use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use super::ssrf::{resolve_and_validate, validate_url};
@@ -34,13 +35,33 @@ pub struct FetchResult {
     pub redirect_count: usize,
 }
 
+/// Build a reqwest client that pins `host` to `resolved_ip`, preventing
+/// DNS rebinding between validation and the actual connection.
+fn build_pinned_client(
+    host: &str,
+    resolved_ip: IpAddr,
+    port: u16,
+    timeout: Duration,
+    headers: HeaderMap,
+) -> std::result::Result<reqwest::Client, String> {
+    let socket_addr = SocketAddr::new(resolved_ip, port);
+    reqwest::Client::builder()
+        .timeout(timeout)
+        .redirect(reqwest::redirect::Policy::none())
+        .default_headers(headers)
+        .resolve(host, socket_addr)
+        .build()
+        .map_err(|e| format!("client build error: {e}"))
+}
+
 pub async fn fetch(raw_url: &str, opts: &FetchOptions) -> std::result::Result<FetchResult, String> {
     // Validate URL
     let url = validate_url(raw_url)?;
     let host = url.host_str().ok_or("no host")?.to_string();
+    let port = url.port_or_known_default().unwrap_or(443);
 
-    // Validate resolved IP (DNS pinning)
-    let _resolved_ip = resolve_and_validate(&host)?;
+    // Resolve DNS and validate all IPs against SSRF rules
+    let resolved_ip = resolve_and_validate(&host)?;
 
     // Build headers
     let mut headers = HeaderMap::new();
@@ -54,13 +75,8 @@ pub async fn fetch(raw_url: &str, opts: &FetchOptions) -> std::result::Result<Fe
         }
     }
 
-    // Disable automatic redirects — we follow manually to re-validate each hop
-    let client = reqwest::Client::builder()
-        .timeout(opts.timeout)
-        .redirect(reqwest::redirect::Policy::none())
-        .default_headers(headers)
-        .build()
-        .map_err(|e| format!("client build error: {e}"))?;
+    // Build client pinned to the validated IP — prevents DNS rebinding TOCTOU
+    let mut client = build_pinned_client(&host, resolved_ip, port, opts.timeout, headers.clone())?;
 
     // Follow redirects manually with SSRF re-validation per hop
     let mut current_url = url.to_string();
@@ -94,7 +110,17 @@ pub async fn fetch(raw_url: &str, opts: &FetchOptions) -> std::result::Result<Fe
                 .host_str()
                 .ok_or("no host in redirect")?
                 .to_string();
-            let _ = resolve_and_validate(&redirect_host)?;
+            let redirect_ip = resolve_and_validate(&redirect_host)?;
+            let redirect_port = next_url.port_or_known_default().unwrap_or(443);
+
+            // Rebuild client pinned to the new validated IP
+            client = build_pinned_client(
+                &redirect_host,
+                redirect_ip,
+                redirect_port,
+                opts.timeout,
+                headers.clone(),
+            )?;
 
             current_url = next_url.to_string();
             redirect_count += 1;
@@ -169,4 +195,44 @@ fn is_timeout_error(err: &str) -> bool {
         || lower.contains("i/o timeout")
         || lower.contains("operation timed out")
         || lower.contains("timed out")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn test_build_pinned_client_succeeds() {
+        // Verify the pinned client builder produces a valid client
+        let ip = IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)); // example.com
+        let headers = HeaderMap::new();
+        let client = build_pinned_client("example.com", ip, 443, Duration::from_secs(10), headers);
+        assert!(client.is_ok(), "pinned client should build successfully");
+    }
+
+    #[test]
+    fn test_build_pinned_client_ipv6() {
+        let ip: IpAddr = "2606:2800:220:1:248:1893:25c8:1946".parse().unwrap();
+        let headers = HeaderMap::new();
+        let client = build_pinned_client("example.com", ip, 443, Duration::from_secs(10), headers);
+        assert!(client.is_ok(), "pinned client should work with IPv6");
+    }
+
+    #[test]
+    fn test_build_pinned_client_custom_port() {
+        let ip = IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34));
+        let headers = HeaderMap::new();
+        let client = build_pinned_client("example.com", ip, 8443, Duration::from_secs(5), headers);
+        assert!(client.is_ok(), "pinned client should work with custom port");
+    }
+
+    #[test]
+    fn test_is_timeout_error() {
+        assert!(is_timeout_error("fetch error: operation timed out"));
+        assert!(is_timeout_error("tls handshake timeout"));
+        assert!(is_timeout_error("context deadline exceeded"));
+        assert!(!is_timeout_error("connection refused"));
+        assert!(!is_timeout_error("DNS resolution failed"));
+    }
 }
