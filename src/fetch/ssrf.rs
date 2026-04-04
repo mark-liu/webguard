@@ -1,7 +1,7 @@
 use ipnetwork::IpNetwork;
 #[cfg(test)]
 use std::net::Ipv6Addr;
-use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::LazyLock;
 use url::Url;
 
@@ -128,16 +128,16 @@ pub fn validate_ip(ip: IpAddr) -> std::result::Result<(), String> {
     Ok(())
 }
 
-pub fn resolve_and_validate(host: &str) -> std::result::Result<IpAddr, String> {
+pub async fn resolve_and_validate(host: &str) -> std::result::Result<IpAddr, String> {
     // If host is already an IP
     if let Ok(ip) = host.parse::<IpAddr>() {
         validate_ip(ip)?;
         return Ok(ip);
     }
 
-    // DNS resolve
-    let addrs: Vec<IpAddr> = format!("{host}:0")
-        .to_socket_addrs()
+    // Async DNS resolve -- avoids blocking the tokio runtime
+    let addrs: Vec<IpAddr> = tokio::net::lookup_host(format!("{host}:0"))
+        .await
         .map_err(|e| format!("DNS resolution failed: {e}"))?
         .map(|sa| sa.ip())
         .collect();
@@ -238,5 +238,36 @@ mod tests {
         // Public IPv6 OK
         let public_v6: IpAddr = "2001:db8::1".parse().unwrap();
         assert!(validate_ip(public_v6).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_and_validate_ip_passthrough() {
+        // Direct IP should pass through without DNS lookup
+        let result = resolve_and_validate("8.8.8.8").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_and_validate_blocks_private_ip() {
+        let result = resolve_and_validate("127.0.0.1").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("blocked range"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_and_validate_blocks_metadata_ip() {
+        let result = resolve_and_validate("169.254.169.254").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_and_validate_resolves_hostname() {
+        // This test requires network access but validates async DNS works
+        let result = resolve_and_validate("example.com").await;
+        assert!(result.is_ok(), "should resolve example.com: {:?}", result);
+        let ip = result.unwrap();
+        // example.com resolves to a public IP
+        assert!(!ip.is_loopback());
     }
 }

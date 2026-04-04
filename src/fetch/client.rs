@@ -60,8 +60,8 @@ pub async fn fetch(raw_url: &str, opts: &FetchOptions) -> std::result::Result<Fe
     let host = url.host_str().ok_or("no host")?.to_string();
     let port = url.port_or_known_default().unwrap_or(443);
 
-    // Resolve DNS and validate all IPs against SSRF rules
-    let resolved_ip = resolve_and_validate(&host)?;
+    // Resolve DNS and validate all IPs against SSRF rules (async)
+    let resolved_ip = resolve_and_validate(&host).await?;
 
     // Build headers
     let mut headers = HeaderMap::new();
@@ -110,7 +110,7 @@ pub async fn fetch(raw_url: &str, opts: &FetchOptions) -> std::result::Result<Fe
                 .host_str()
                 .ok_or("no host in redirect")?
                 .to_string();
-            let redirect_ip = resolve_and_validate(&redirect_host)?;
+            let redirect_ip = resolve_and_validate(&redirect_host).await?;
             let redirect_port = next_url.port_or_known_default().unwrap_or(443);
 
             // Rebuild client pinned to the new validated IP
