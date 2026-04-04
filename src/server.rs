@@ -540,25 +540,108 @@ pub fn format_match_categories(matches: &[classify::Match]) -> String {
         .join(", ")
 }
 
+/// Pure documentation domains -- any non-root path is documentation.
+/// These are sites dedicated entirely to hosting API docs / references.
+const DOC_DOMAINS_PURE: &[&str] = &[
+    "docs.rs",
+    "doc.rust-lang.org",
+    "pkg.go.dev",
+    "godoc.org",
+    "docs.python.org",
+    "api.rubyonrails.org",
+    "rubydoc.info",
+    "devdocs.io",
+    "hexdocs.pm",
+    "javadoc.io",
+    "cppreference.com",
+    "en.cppreference.com",
+    "man7.org",
+    "react.dev",
+    "docs.npmjs.com",
+];
+
+/// Mixed-content documentation domains -- require a doc-like path segment.
+/// These host docs alongside non-doc content (blogs, marketing, etc.).
+const DOC_DOMAINS_MIXED: &[&str] = &[
+    "crates.io",
+    "developer.mozilla.org",
+    "docs.github.com",
+    "docs.gitlab.com",
+    "pypi.org",
+    "readthedocs.io",
+    "readthedocs.org",
+    "learn.microsoft.com",
+    "docs.microsoft.com",
+    "docs.aws.amazon.com",
+    "cloud.google.com",
+    "firebase.google.com",
+    "kubernetes.io",
+    "registry.terraform.io",
+    "docs.oracle.com",
+    "docs.spring.io",
+    "docs.docker.com",
+    "nodejs.org",
+    "vuejs.org",
+    "angular.dev",
+    "docs.djangoproject.com",
+    "flask.palletsprojects.com",
+    "docs.expo.dev",
+    "hex.pm",
+    "developer.apple.com",
+    "developer.android.com",
+    "docs.swift.org",
+    "typescriptlang.org",
+    "docs.deno.com",
+    "wiki.archlinux.org",
+];
+
+/// Doc-like path segments used for mixed-content domains.
+const DOC_PATH_SEGMENTS: &[&str] = &[
+    "/docs/",
+    "/api/",
+    "/reference/",
+    "/developer/",
+    "/guide/",
+    "/sdk/",
+    "/tutorial/",
+    "/docs",
+    "/api",
+    "/reference",
+    "/developer",
+    "/guide",
+    "/sdk",
+    "/tutorial",
+];
+
+fn is_domain_match(host: &str, allowed: &str) -> bool {
+    host == allowed || host.ends_with(&format!(".{allowed}"))
+}
+
+/// Check if a URL is a documentation page on a trusted domain.
+///
+/// For pure-doc domains: any non-root path qualifies.
+/// For mixed-content domains: the path must also contain a doc-like segment.
+/// Untrusted domains never qualify, preventing attacker-controlled URLs
+/// like `https://evil.com/docs/payload` from triggering suppression.
 pub fn is_doc_url(u: &Url) -> bool {
+    let host = match u.host_str() {
+        Some(h) => h.to_lowercase(),
+        None => return false,
+    };
+
     let path = u.path().to_lowercase();
-    let doc_segments = [
-        "/docs/",
-        "/api/",
-        "/reference/",
-        "/developer/",
-        "/guide/",
-        "/sdk/",
-        "/tutorial/",
-        "/docs",
-        "/api",
-        "/reference",
-        "/developer",
-        "/guide",
-        "/sdk",
-        "/tutorial",
-    ];
-    doc_segments.iter().any(|seg| path.contains(seg))
+
+    // Pure doc domains: any non-root path is documentation
+    if DOC_DOMAINS_PURE.iter().any(|d| is_domain_match(&host, d)) {
+        return path.len() > 1; // more than just "/"
+    }
+
+    // Mixed-content domains: need both trusted domain AND doc-like path
+    if DOC_DOMAINS_MIXED.iter().any(|d| is_domain_match(&host, d)) {
+        return DOC_PATH_SEGMENTS.iter().any(|seg| path.contains(seg));
+    }
+
+    false
 }
 
 pub fn pct(n: usize, total: usize) -> f64 {
@@ -573,22 +656,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_doc_url() {
-        let doc_urls = [
-            "https://example.com/docs/api",
-            "https://example.com/api/v2",
-            "https://example.com/reference/types",
-            "https://example.com/developer/guide",
-            "https://example.com/guide/getting-started",
-            "https://example.com/sdk/python",
-            "https://example.com/tutorial/basics",
+    fn test_is_doc_url_trusted_domains() {
+        // Trusted doc domains with doc-like paths should match
+        let trusted_doc_urls = [
+            "https://docs.rs/tokio/latest/tokio/",
+            "https://developer.mozilla.org/en-US/docs/Web/API",
+            "https://docs.github.com/en/rest/reference",
+            "https://pkg.go.dev/net/http",
+            "https://docs.python.org/3/library/asyncio.html",
+            "https://learn.microsoft.com/en-us/azure/guide",
+            "https://docs.aws.amazon.com/sdk/latest/reference",
+            "https://cloud.google.com/docs/tutorials",
+            "https://kubernetes.io/docs/reference/api",
+            "https://registry.terraform.io/docs/modules",
+            "https://doc.rust-lang.org/reference/types.html",
+            "https://docs.oracle.com/javase/tutorial/basics",
+            "https://api.rubyonrails.org/classes/ActiveRecord",
+            "https://docs.docker.com/reference/api",
+            "https://docs.npmjs.com/cli/install",
+            "https://react.dev/reference/react",
+            "https://docs.djangoproject.com/en/5.0/guide",
         ];
-        for u in doc_urls {
+        for u in trusted_doc_urls {
             let parsed = Url::parse(u).unwrap();
             assert!(is_doc_url(&parsed), "should be doc URL: {u}");
         }
+    }
 
+    #[test]
+    fn test_is_doc_url_untrusted_domains_rejected() {
+        // Attacker-controlled domains with doc-like paths must NOT match
+        let evil_urls = [
+            "https://evil.com/docs/payload",
+            "https://evil.com/api/v2",
+            "https://attacker.io/reference/types",
+            "https://malicious.example/developer/guide",
+            "https://phishing.net/guide/getting-started",
+            "https://evil.com/sdk/python",
+            "https://evil.com/tutorial/basics",
+        ];
+        for u in evil_urls {
+            let parsed = Url::parse(u).unwrap();
+            assert!(!is_doc_url(&parsed), "untrusted domain should NOT be doc URL: {u}");
+        }
+    }
+
+    #[test]
+    fn test_is_doc_url_non_doc_paths() {
+        // Trusted domains but non-doc paths should NOT match
         let non_doc_urls = [
+            "https://docs.rs/",
+            "https://developer.mozilla.org/",
             "https://example.com/blog/post",
             "https://example.com/",
             "https://example.com/careers",
