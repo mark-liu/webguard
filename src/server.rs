@@ -258,7 +258,7 @@ impl WebGuardServer {
                 let mut output = output_content;
                 if let Some(max) = max_chars {
                     if max > 0 && output.len() as i64 > max {
-                        output.truncate(max as usize);
+                        safe_truncate(&mut output, max as usize);
                     }
                 }
                 content.push_str(&output);
@@ -270,7 +270,7 @@ impl WebGuardServer {
                 let mut output = output_content;
                 if let Some(max) = max_chars {
                     if max > 0 && output.len() as i64 > max {
-                        output.truncate(max as usize);
+                        safe_truncate(&mut output, max as usize);
                     }
                 }
                 format!("{output}\n\n{metadata}")
@@ -644,6 +644,21 @@ pub fn is_doc_url(u: &Url) -> bool {
     false
 }
 
+/// Truncate a string to at most `max_bytes` bytes without panicking on
+/// multi-byte UTF-8 code points. Keeps only complete characters that
+/// fit entirely within the byte budget.
+fn safe_truncate(s: &mut String, max_bytes: usize) {
+    if s.len() <= max_bytes {
+        return;
+    }
+    let truncate_at = s.char_indices()
+        .map(|(i, c)| i + c.len_utf8())
+        .take_while(|end| *end <= max_bytes)
+        .last()
+        .unwrap_or(0);
+    s.truncate(truncate_at);
+}
+
 pub fn pct(n: usize, total: usize) -> f64 {
     if total == 0 {
         return 0.0;
@@ -715,6 +730,63 @@ mod tests {
             let parsed = Url::parse(u).unwrap();
             assert!(!is_doc_url(&parsed), "should not be doc URL: {u}");
         }
+    }
+
+    #[test]
+    fn test_safe_truncate_ascii() {
+        let mut s = "hello world".to_string();
+        safe_truncate(&mut s, 5);
+        assert_eq!(s, "hello");
+    }
+
+    #[test]
+    fn test_safe_truncate_no_op_when_within_limit() {
+        let mut s = "short".to_string();
+        safe_truncate(&mut s, 100);
+        assert_eq!(s, "short");
+    }
+
+    #[test]
+    fn test_safe_truncate_emoji_no_panic() {
+        // Emoji are 4 bytes each. Truncating at byte 5 (mid-second emoji)
+        // should not panic -- should truncate to the first complete emoji.
+        let mut s = "\u{1F600}\u{1F601}\u{1F602}".to_string(); // 3 emoji, 12 bytes
+        assert_eq!(s.len(), 12);
+        safe_truncate(&mut s, 5); // falls inside second emoji
+        assert_eq!(s, "\u{1F600}"); // only first emoji survives
+    }
+
+    #[test]
+    fn test_safe_truncate_cjk_no_panic() {
+        // CJK characters are 3 bytes each
+        let mut s = "\u{4F60}\u{597D}\u{4E16}\u{754C}".to_string(); // 4 chars, 12 bytes
+        assert_eq!(s.len(), 12);
+        safe_truncate(&mut s, 7); // falls inside 3rd char
+        assert_eq!(s, "\u{4F60}\u{597D}"); // first two chars
+    }
+
+    #[test]
+    fn test_safe_truncate_mixed_content() {
+        // Mix of ASCII and multi-byte: "Hi \u{1F600} world"
+        let mut s = "Hi \u{1F600} world".to_string();
+        let emoji_end = 3 + 4; // "Hi " (3 bytes) + emoji (4 bytes) = 7
+        safe_truncate(&mut s, emoji_end);
+        assert_eq!(s, "Hi \u{1F600}");
+    }
+
+    #[test]
+    fn test_safe_truncate_zero() {
+        let mut s = "hello".to_string();
+        safe_truncate(&mut s, 0);
+        assert_eq!(s, "");
+    }
+
+    #[test]
+    fn test_safe_truncate_exact_boundary() {
+        // Truncate at exact char boundary should work
+        let mut s = "\u{1F600}\u{1F601}".to_string(); // 8 bytes
+        safe_truncate(&mut s, 4); // exact end of first emoji
+        assert_eq!(s, "\u{1F600}");
     }
 
     #[test]
