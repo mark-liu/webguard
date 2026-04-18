@@ -404,9 +404,9 @@ impl WebGuardServer {
 
         let pct = |n: usize| -> f64 { n as f64 / total as f64 * 100.0 };
 
-        // Sort patterns by hit count
+        // Sort patterns by hit count (descending)
         let mut sorted_patterns: Vec<_> = pattern_hits.into_iter().collect();
-        sorted_patterns.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted_patterns.sort_by_key(|b| std::cmp::Reverse(b.1));
 
         let mut report = format!(
             "WebGuard Audit Report\n\
