@@ -2,7 +2,7 @@ use chrono::Utc;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Content};
-use rmcp::{ServerHandler, tool, tool_handler, tool_router};
+use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -243,6 +243,7 @@ impl WebGuardServer {
             fetch_dur,
             scan_dur,
             &fetch_result.final_url,
+            fetch_result.truncated,
         );
 
         // Build response
@@ -502,12 +503,17 @@ fn format_metadata(
     fetch_dur: std::time::Duration,
     scan_dur: std::time::Duration,
     final_url: &str,
+    truncated: bool,
 ) -> String {
     let mut meta = format!(
         "---\nwebguard:\n  verdict: {verdict}\n  score: {score:.4}\n  url: {final_url}\n  fetch_ms: {:.0}\n  scan_ms: {:.1}\n",
         fetch_dur.as_secs_f64() * 1000.0,
         scan_dur.as_secs_f64() * 1000.0,
     );
+
+    if truncated {
+        meta.push_str("  truncated: true\n");
+    }
 
     if !matches.is_empty() {
         meta.push_str("  matches:\n");
