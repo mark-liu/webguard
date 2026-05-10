@@ -1,6 +1,6 @@
 [package]
 name = "webguard"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Secure MCP server — scans web content for prompt injection before it enters LLM context"
 license = "MIT OR GPL-3.0"

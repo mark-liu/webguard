@@ -151,6 +151,7 @@ impl WebGuardServer {
                     fetch_start.elapsed(),
                     std::time::Duration::ZERO,
                     elapsed,
+                    0,
                     &e,
                 );
                 return Ok(CallToolResult::error(vec![Content::text(format!(
@@ -168,6 +169,43 @@ impl WebGuardServer {
         // comment extraction, tag stripping, entity decoding, etc. Feeding
         // extracted markdown would lose HTML comments where attackers hide payloads.
         let scan_content = String::from_utf8_lossy(body).to_string();
+
+        // Pre-classification short-circuit: if the response is an anti-bot
+        // challenge page (CF JS challenge, Turnstile, Akamai), skip classify
+        // and tell the caller to retry via a real-browser tool. The pattern
+        // engine would either false-pass (challenge text is benign) or
+        // false-block on challenge HTML that resembles injection — neither is
+        // useful here. This is the documented escape hatch for hosts whose
+        // wire-fingerprint defences exceed our Chrome emulation (notably
+        // dpreview.com on CF Enterprise, ebay.com on heavyweight Akamai).
+        if let Some(challenge) = detect_challenge(fetch_result.status_code, &scan_content) {
+            let total_dur = total_start.elapsed();
+            self.log_audit(
+                &url,
+                "browser-required",
+                0.0,
+                vec![],
+                fetch_dur,
+                std::time::Duration::ZERO,
+                total_dur,
+                fetch_result.status_code,
+                challenge.slug(),
+            );
+            let metadata = format_browser_required_metadata(
+                &fetch_result.final_url,
+                fetch_dur,
+                challenge,
+                fetch_result.truncated,
+            );
+            let body_msg = format!(
+                "[BROWSER REQUIRED: {} detected at {}. Fetch via mcp__playwright__browser_navigate.]",
+                challenge.display_name(),
+                &fetch_result.final_url,
+            );
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "{body_msg}\n\n{metadata}"
+            ))]));
+        }
 
         // Clean extraction for output (or raw)
         let output_content = if raw_mode {
@@ -232,6 +270,7 @@ impl WebGuardServer {
             fetch_dur,
             scan_dur,
             total_dur,
+            fetch_result.status_code,
             "",
         );
 
@@ -371,6 +410,7 @@ impl WebGuardServer {
         let mut block_count = 0usize;
         let mut warn_count = 0usize;
         let mut error_count = 0usize;
+        let mut browser_required_count = 0usize;
         let mut pattern_hits: HashMap<String, usize> = HashMap::new();
         let mut domain_verdicts: HashMap<String, String> = HashMap::new();
         let mut total_fetch_ms = 0.0f64;
@@ -382,6 +422,7 @@ impl WebGuardServer {
                 "block" => block_count += 1,
                 "warn" => warn_count += 1,
                 "error" => error_count += 1,
+                "browser-required" => browser_required_count += 1,
                 _ => {}
             }
 
@@ -416,11 +457,13 @@ impl WebGuardServer {
              - Pass: {pass_count} ({:.1}%)\n\
              - Block: {block_count} ({:.1}%)\n\
              - Warn: {warn_count} ({:.1}%)\n\
-             - Error: {error_count} ({:.1}%)\n",
+             - Error: {error_count} ({:.1}%)\n\
+             - Browser required: {browser_required_count} ({:.1}%)\n",
             pct(pass_count),
             pct(block_count),
             pct(warn_count),
             pct(error_count),
+            pct(browser_required_count),
         );
 
         if !sorted_patterns.is_empty() {
@@ -442,8 +485,12 @@ impl WebGuardServer {
         } else {
             0.0
         };
-        let avg_scan = if total > 0 {
-            total_scan_ms / total as f64
+        // browser-required entries skip scanning entirely (scan_ms=0), so
+        // including them in the denominator silently drags the average down
+        // and obscures real classifier latency.
+        let scanned = total - browser_required_count;
+        let avg_scan = if scanned > 0 {
+            total_scan_ms / scanned as f64
         } else {
             0.0
         };
@@ -466,6 +513,7 @@ impl WebGuardServer {
         fetch_dur: std::time::Duration,
         scan_dur: std::time::Duration,
         total_dur: std::time::Duration,
+        status_code: u16,
         err_msg: &str,
     ) {
         self.audit_logger.log(&audit::Entry {
@@ -477,7 +525,7 @@ impl WebGuardServer {
             fetch_time_ms: fetch_dur.as_secs_f64() * 1000.0,
             scan_time_ms: scan_dur.as_secs_f64() * 1000.0,
             total_time_ms: total_dur.as_secs_f64() * 1000.0,
-            status_code: 0,
+            status_code,
             error: err_msg.to_string(),
         });
     }
@@ -494,6 +542,122 @@ impl ServerHandler for WebGuardServer {
         info.server_info.version = self.version.clone();
         info
     }
+}
+
+/// Anti-bot challenge pages we recognise. Listed in priority order: a body
+/// matching multiple markers is reported as the most specific match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChallengeKind {
+    CloudflareJs,
+    CloudflareTurnstile,
+    Akamai,
+}
+
+impl ChallengeKind {
+    fn display_name(self) -> &'static str {
+        match self {
+            ChallengeKind::CloudflareJs => "Cloudflare JS challenge",
+            ChallengeKind::CloudflareTurnstile => "Cloudflare Turnstile",
+            ChallengeKind::Akamai => "Akamai Access Denied",
+        }
+    }
+
+    fn slug(self) -> &'static str {
+        match self {
+            ChallengeKind::CloudflareJs => "cloudflare-js",
+            ChallengeKind::CloudflareTurnstile => "cloudflare-turnstile",
+            ChallengeKind::Akamai => "akamai-access-denied",
+        }
+    }
+}
+
+/// Challenge pages observed in the wild: CF JS ~5-15KB (inline solver JS),
+/// CF Turnstile 2-8KB, Akamai 200B-2KB. 32KB ceiling keeps real pages in
+/// scope while still gating out the long-tail false positive of a legit
+/// 100KB+ article that happens to quote "challenge-error-text" or
+/// "Reference #" in body copy.
+const MAX_CHALLENGE_BODY_BYTES: usize = 32 * 1024;
+
+/// Real Akamai pages co-locate "Access Denied" and "Reference" in the same
+/// paragraph (typical page is 200B-2KB total). A legit blog post that quotes
+/// both terms separately would have them scattered, so a proximity gate keeps
+/// the matcher specific without depending on a particular entity scheme.
+const AKAMAI_PROXIMITY_BYTES: usize = 1024;
+
+/// Decide whether the response is an anti-bot challenge page worth
+/// short-circuiting the classifier for. Two-layer gate:
+///   1. **Status code** — only 4xx/5xx responses can be challenges. A 200 OK
+///      that quotes challenge phrases is benign content (or a content-injection
+///      attempt), so we keep scanning it.
+///   2. **Provider-specific tokens** — a generic phrase ("Just a moment",
+///      "Access Denied") is not enough on its own, since a malicious or
+///      benign page could spoof it to bypass classification. We additionally
+///      require a token only the real challenge runtime emits:
+///        * Cloudflare JS: `cdn-cgi/challenge-platform` or `__cf_chl`
+///        * Turnstile:     `challenges.cloudflare.com` or `cf-turnstile`
+///        * Akamai:        `edgesuite` (their error-CDN domain, present even
+///                         when surrounding punctuation is entity-encoded)
+/// Bodies failing the second gate fall through to normal classification —
+/// the safe default — so the spoofing surface is bounded.
+fn detect_challenge(status_code: u16, body: &str) -> Option<ChallengeKind> {
+    if status_code < 400 || body.len() > MAX_CHALLENGE_BODY_BYTES {
+        return None;
+    }
+    let cf_phrase = body.contains("Just a moment") || body.contains("challenge-error-text");
+    let cf_specific = body.contains("cdn-cgi/challenge-platform") || body.contains("__cf_chl");
+    if cf_phrase && cf_specific {
+        return Some(ChallengeKind::CloudflareJs);
+    }
+    if body.contains("Verify you are human")
+        && (body.contains("challenges.cloudflare.com") || body.contains("cf-turnstile"))
+    {
+        return Some(ChallengeKind::CloudflareTurnstile);
+    }
+    if substring_within(body, "Access Denied", "Reference", AKAMAI_PROXIMITY_BYTES)
+        && body.contains("edgesuite")
+    {
+        return Some(ChallengeKind::Akamai);
+    }
+    None
+}
+
+/// Returns true if `needle` appears within `window` bytes of the first
+/// occurrence of `anchor` in `body`. UTF-8-safe: walks `window_end` back
+/// to the nearest char boundary (at most 3 bytes).
+fn substring_within(body: &str, anchor: &str, needle: &str, window: usize) -> bool {
+    let Some(anchor_pos) = body.find(anchor) else {
+        return false;
+    };
+    let mut window_end = (anchor_pos + window).min(body.len());
+    while window_end > anchor_pos && !body.is_char_boundary(window_end) {
+        window_end -= 1;
+    }
+    body[anchor_pos..window_end].contains(needle)
+}
+
+fn format_browser_required_metadata(
+    final_url: &str,
+    fetch_dur: std::time::Duration,
+    challenge: ChallengeKind,
+    truncated: bool,
+) -> String {
+    let mut meta = format!(
+        "---\nwebguard:\n  verdict: browser-required\n  challenge: {}\n  url: {}\n  fetch_ms: {:.0}\n",
+        challenge.slug(),
+        final_url,
+        fetch_dur.as_secs_f64() * 1000.0,
+    );
+    if truncated {
+        meta.push_str("  truncated: true\n");
+    }
+    meta.push_str("  retry_with:\n");
+    meta.push_str("    tool: mcp__playwright__browser_navigate\n");
+    meta.push_str(&format!(
+        "    reason: {} detected; needs real browser to execute JS / pass bot detection\n",
+        challenge.display_name(),
+    ));
+    meta.push_str("---");
+    meta
 }
 
 fn format_metadata(
@@ -676,6 +840,132 @@ pub fn pct(n: usize, total: usize) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Real challenge bodies harvested from production fetches against
+    // dpreview / ebay etc — minimal HTML, but with the provider-specific
+    // token kept in (cdn-cgi/challenge-platform, edgesuite, etc.) so the
+    // detector tests exercise the same surface real pages do.
+    const CF_JS_BODY: &str = "<title>Just a moment...</title>\n<script src=\"/cdn-cgi/challenge-platform/h/g/orchestrate/jsch/v1\"></script>\n<span id=\"challenge-error-text\">Enable JavaScript and cookies to continue</span>";
+    const CF_TURNSTILE_BODY: &str = "Verify you are human\n<div class=\"cf-turnstile\" data-sitekey=\"...\"></div>\n<script src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\"></script>";
+    const AKAMAI_BODY: &str = "<TITLE>Access Denied</TITLE>\nYou don't have permission to access this resource.\nReference #18.3df00117.1777762703.18f8a976\nhttps://errors.edgesuite.net/18.3df00117.1777762703.18f8a976";
+    // eBay's Akamai page entity-encodes the period in `errors.edgesuite.net`
+    // (-> `errors&#46;edgesuite&#46;net`). The literal `edgesuite` substring
+    // still appears, which is what the detector keys on. Locking this in so
+    // future tightening can't regress it.
+    const AKAMAI_BODY_ENTITY_ENCODED: &str = "<TITLE>Access Denied</TITLE>\nYou don't have permission to access &quot;https://www.ebay.com.au/sch/&quot; on this server.<P>Reference&#32;&#35;18.f9faea5c.1777762703.0\n<P>https&#58;&#47;&#47;errors&#46;edgesuite&#46;net&#47;18.f9faea5c.1777762703.0";
+
+    #[test]
+    fn test_detect_cloudflare_js() {
+        assert_eq!(
+            detect_challenge(403, CF_JS_BODY),
+            Some(ChallengeKind::CloudflareJs),
+        );
+    }
+
+    #[test]
+    fn test_detect_cloudflare_turnstile() {
+        assert_eq!(
+            detect_challenge(403, CF_TURNSTILE_BODY),
+            Some(ChallengeKind::CloudflareTurnstile),
+        );
+    }
+
+    #[test]
+    fn test_detect_akamai() {
+        assert_eq!(
+            detect_challenge(403, AKAMAI_BODY),
+            Some(ChallengeKind::Akamai),
+        );
+    }
+
+    #[test]
+    fn test_detect_akamai_entity_encoded() {
+        assert_eq!(
+            detect_challenge(403, AKAMAI_BODY_ENTITY_ENCODED),
+            Some(ChallengeKind::Akamai),
+        );
+    }
+
+    #[test]
+    fn test_detect_no_false_positive_on_normal_html() {
+        let normal = "<html><body><h1>Welcome</h1><p>Some article content here.</p></body></html>";
+        assert_eq!(detect_challenge(403, normal), None);
+    }
+
+    #[test]
+    fn test_detect_status_gate_skips_2xx_responses() {
+        // A 200 OK that happens to contain challenge phrases (or attempts to
+        // spoof one) must NOT short-circuit classification — only real
+        // challenge responses (4xx/5xx) qualify.
+        assert_eq!(detect_challenge(200, CF_JS_BODY), None);
+        assert_eq!(detect_challenge(200, AKAMAI_BODY), None);
+    }
+
+    #[test]
+    fn test_detect_provider_token_required() {
+        // Generic phrase alone is insufficient — a malicious 4xx page
+        // could embed "Just a moment" or "Access Denied" + "Reference"
+        // to bypass classification. Without the provider-specific token
+        // we fall through to normal scanning.
+        let cf_phrase_only =
+            "<title>Just a moment...</title>\n<p>Generic body without CF tokens.</p>";
+        assert_eq!(detect_challenge(403, cf_phrase_only), None);
+        let akamai_phrase_only = "Access Denied\nReference #1234567890";
+        assert_eq!(detect_challenge(403, akamai_phrase_only), None);
+    }
+
+    #[test]
+    fn test_detect_akamai_proximity_gate_skips_distant_matches() {
+        // Both substrings present, but separated by >1KB of body copy —
+        // typical of an article quoting Akamai pages. Should NOT match
+        // even with the edgesuite token present.
+        let mut body = String::with_capacity(4096);
+        body.push_str("Access Denied\n");
+        body.push_str(&"x".repeat(AKAMAI_PROXIMITY_BYTES + 100));
+        body.push_str(
+            "\nReference to other security writeups follows. edgesuite.net mentioned in passing.",
+        );
+        assert!(body.len() < MAX_CHALLENGE_BODY_BYTES);
+        assert_eq!(detect_challenge(403, &body), None);
+    }
+
+    #[test]
+    fn test_detect_size_gate_prevents_large_body_false_positive() {
+        // A legit forum/news page might quote "Access Denied" and "Reference #"
+        // in body copy. Size gate keeps detection focused on real challenges.
+        let mut large = String::with_capacity(MAX_CHALLENGE_BODY_BYTES + 200);
+        large.push_str("Access Denied. Reference #99. edgesuite. ");
+        while large.len() < MAX_CHALLENGE_BODY_BYTES + 100 {
+            large.push_str("Body of a real article that quotes the phrase. ");
+        }
+        assert_eq!(detect_challenge(403, &large), None);
+    }
+
+    #[test]
+    fn test_browser_required_metadata_shape() {
+        let meta = format_browser_required_metadata(
+            "https://www.dpreview.com/",
+            std::time::Duration::from_millis(234),
+            ChallengeKind::CloudflareJs,
+            false,
+        );
+        assert!(meta.contains("verdict: browser-required"));
+        assert!(meta.contains("challenge: cloudflare-js"));
+        assert!(meta.contains("tool: mcp__playwright__browser_navigate"));
+        assert!(meta.contains("fetch_ms: 234"));
+        assert!(!meta.contains("truncated:"));
+    }
+
+    #[test]
+    fn test_browser_required_metadata_includes_truncated_when_set() {
+        let meta = format_browser_required_metadata(
+            "https://example.com/",
+            std::time::Duration::from_millis(50),
+            ChallengeKind::Akamai,
+            true,
+        );
+        assert!(meta.contains("truncated: true"));
+    }
 
     #[test]
     fn test_is_doc_url_trusted_domains() {
