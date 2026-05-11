@@ -1,5 +1,5 @@
 use rquest::header::{
-    ACCEPT, ACCEPT_LANGUAGE, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, LOCATION,
+    HeaderMap, HeaderName, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, CONTENT_TYPE, LOCATION,
     UPGRADE_INSECURE_REQUESTS, USER_AGENT,
 };
 use rquest_util::Emulation;
@@ -14,19 +14,26 @@ const DEFAULT_MAX_BODY_SIZE: i64 = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_REDIRECTS: usize = 5;
 
-// Mirror Chrome 136 across the whole stack: TLS ClientHello + HTTP/2 SETTINGS
-// (via `rquest_util::Emulation::Chrome136`), header order, and this UA string.
+// Mirror Chrome 134 across the whole stack: TLS ClientHello + HTTP/2 SETTINGS
+// (via `rquest_util::Emulation::Chrome134`), header order, and this UA string.
 // The version pinned here MUST match `EMULATION_PROFILE` below — divergent
 // header/UA vs. wire fingerprint is itself a bot signal.
 // `concat!` avoids string-literal continuation, which would embed leading
 // whitespace from the next line into the value and trip UA fingerprinting.
+//
+// Why Chrome 134 specifically: as of 2026-05, rquest-util's Chrome135 and
+// Chrome136 profiles both fail Cloudflare Enterprise (dpreview.com) and
+// Akamai Bot Manager (ebay.com.au), while Chrome134, Edge134, and Safari17_5
+// pass — confirmed by side-by-side probe. Chrome 134 is the highest version
+// with a wide-traffic profile that the bot-management vendors still treat
+// as a real browser.
 const UA: &str = concat!(
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ",
     "AppleWebKit/537.36 (KHTML, like Gecko) ",
-    "Chrome/136.0.0.0 Safari/537.36",
+    "Chrome/134.0.0.0 Safari/537.36",
 );
 
-const EMULATION_PROFILE: Emulation = Emulation::Chrome136;
+const EMULATION_PROFILE: Emulation = Emulation::Chrome134;
 
 const ACCEPT_DEFAULT: &str = concat!(
     "text/html,application/xhtml+xml,application/xml;q=0.9,",
@@ -105,7 +112,7 @@ pub struct FetchResult {
 /// Build an rquest client that pins `host` to `resolved_ip`, preventing
 /// DNS rebinding between validation and the actual connection.
 ///
-/// `Emulation::Chrome136` drives the TLS ClientHello (JA3/JA4) and HTTP/2
+/// `Emulation::Chrome134` drives the TLS ClientHello (JA3/JA4) and HTTP/2
 /// SETTINGS frame to match real Chrome — the actual mechanism that defeats
 /// Cloudflare/Akamai bot management. Header tweaks alone don't cross that
 /// gate; the wire fingerprint does.
