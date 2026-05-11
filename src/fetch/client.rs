@@ -1,5 +1,5 @@
 use rquest::header::{
-    HeaderMap, HeaderName, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, CONTENT_TYPE, LOCATION,
+    ACCEPT, ACCEPT_LANGUAGE, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, LOCATION,
     UPGRADE_INSECURE_REQUESTS, USER_AGENT,
 };
 use rquest_util::Emulation;

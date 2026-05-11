@@ -153,6 +153,7 @@ impl WebGuardServer {
                     elapsed,
                     0,
                     &e,
+                    "",
                 );
                 return Ok(CallToolResult::error(vec![Content::text(format!(
                     "Fetch error: {e}"
@@ -189,6 +190,7 @@ impl WebGuardServer {
                 std::time::Duration::ZERO,
                 total_dur,
                 fetch_result.status_code,
+                "",
                 challenge.slug(),
             );
             let metadata = format_browser_required_metadata(
@@ -271,6 +273,7 @@ impl WebGuardServer {
             scan_dur,
             total_dur,
             fetch_result.status_code,
+            "",
             "",
         );
 
@@ -515,6 +518,7 @@ impl WebGuardServer {
         total_dur: std::time::Duration,
         status_code: u16,
         err_msg: &str,
+        challenge: &str,
     ) {
         self.audit_logger.log(&audit::Entry {
             timestamp: Utc::now(),
@@ -527,6 +531,7 @@ impl WebGuardServer {
             total_time_ms: total_dur.as_secs_f64() * 1000.0,
             status_code,
             error: err_msg.to_string(),
+            challenge: challenge.to_string(),
         });
     }
 }

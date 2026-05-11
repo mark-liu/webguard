@@ -27,6 +27,13 @@ pub struct Entry {
     pub status_code: u16,
     #[serde(skip_serializing_if = "String::is_empty", default)]
     pub error: String,
+    /// Anti-bot challenge slug when verdict is `browser-required`
+    /// (`cloudflare-js`, `cloudflare-turnstile`, `akamai-access-denied`).
+    /// Empty for every other verdict. Separate from `error` so JSONL
+    /// consumers can disambiguate "this errored" vs "this was a challenge"
+    /// without inspecting the verdict string.
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub challenge: String,
 }
 
 fn is_zero(v: &u16) -> bool {
@@ -147,6 +154,7 @@ mod tests {
             total_time_ms: 105.0,
             status_code: 200,
             error: String::new(),
+            challenge: String::new(),
         };
 
         logger.log(&entry);
@@ -174,6 +182,7 @@ mod tests {
             total_time_ms: 0.0,
             status_code: 0,
             error: String::new(),
+            challenge: String::new(),
         };
         logger.log(&entry); // should not panic
     }
@@ -196,6 +205,7 @@ mod tests {
                 total_time_ms: 0.0,
                 status_code: 200,
                 error: String::new(),
+                challenge: String::new(),
             });
         }
         logger.close();
@@ -225,6 +235,7 @@ mod tests {
                     total_time_ms: 0.0,
                     status_code: 200,
                     error: String::new(),
+                    challenge: String::new(),
                 });
             }));
         }
@@ -265,6 +276,7 @@ mod tests {
             total_time_ms: 0.0,
             status_code: 200,
             error: String::new(),
+            challenge: String::new(),
         });
 
         logger.log(&Entry {
@@ -278,6 +290,7 @@ mod tests {
             total_time_ms: 0.0,
             status_code: 200,
             error: String::new(),
+            challenge: String::new(),
         });
 
         logger.log(&Entry {
@@ -291,6 +304,7 @@ mod tests {
             total_time_ms: 0.0,
             status_code: 0,
             error: "timeout".into(),
+            challenge: String::new(),
         });
         logger.close();
 
@@ -317,6 +331,7 @@ mod tests {
             total_time_ms: 0.0,
             status_code: 0,
             error: String::new(),
+            challenge: String::new(),
         };
 
         let json = serde_json::to_string(&entry).unwrap();
