@@ -2,7 +2,7 @@ use chrono::Utc;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Content};
-use rmcp::{ServerHandler, tool, tool_handler, tool_router};
+use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -433,13 +433,19 @@ impl WebGuardServer {
                 *pattern_hits.entry(m.pattern_id.clone()).or_default() += 1;
             }
 
-            if let Ok(u) = Url::parse(&entry.url) {
-                if let Some(host) = u.host_str() {
-                    if entry.verdict == "block" || entry.verdict == "warn" {
-                        domain_verdicts
-                            .entry(host.to_string())
-                            .or_insert(entry.verdict.clone());
-                    }
+            // Post-0.4.0 entries carry `host` directly because `url` is
+            // defanged on write and no longer parseable. Pre-0.4.0 entries
+            // fall back to Url::parse for backward compat.
+            let host = if !entry.host.is_empty() {
+                Some(entry.host.clone())
+            } else {
+                Url::parse(&entry.url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_string))
+            };
+            if let Some(host) = host {
+                if entry.verdict == "block" || entry.verdict == "warn" {
+                    domain_verdicts.entry(host).or_insert(entry.verdict.clone());
                 }
             }
 
@@ -523,6 +529,9 @@ impl WebGuardServer {
         self.audit_logger.log(&audit::Entry {
             timestamp: Utc::now(),
             url: url.to_string(),
+            // Empty here; Logger::log extracts host from `url` before
+            // defanging so report aggregation by domain still works.
+            host: String::new(),
             verdict: verdict.to_string(),
             score,
             matches,
