@@ -52,17 +52,18 @@ False claims of developer, admin, or elevated access.
 | ac-005 | medium | literal | `you are now in` |
 | ac-006 | critical | regex | `(?i)(I\s+am\|this\s+is)\s+(your\|the)\s+(developer\|creator\|admin\|administrator\|owner)` |
 
-## exfil-instruction (5 patterns)
+## exfil-instruction (4 patterns)
 
 Data exfiltration via URLs, hidden elements, or direct commands.
 
 | ID | Severity | Type | Pattern |
 |----|----------|------|---------|
 | ei-001 | critical | literal | `send all data to` |
-| ei-002 | high | literal | `exfiltrate` |
 | ei-003 | critical | regex | `(?i)send\s+(all\|the\|this\|your)\s+(the\s+)?(data\|information\|context\|conversation)\s+(and\s+\w+\s+)?to\s+(https?://\|//\|[domain])` |
 | ei-004 | high | regex | `(?i)(fetch\|load\|visit\|open\|navigate)\s+(https?://\|//)[^\s]+` |
 | ei-005 | high | regex | `!\[(track\|pixel\|1x1\|beacon\|exfil)\w*\]\(https?://...\)` |
+
+> **ei-002 removed 2026-05-24** — bare literal `exfiltrate` was too broad: matched security marketing copy (promptarmor.com, llm-guard, vigil-llm), webguard's own docs, and any blog post discussing exfiltration. Real attack instructions are covered by ei-001/003/004/005 (which require either a target verb or a destination URL). Net: precision up, no measurable recall loss on testdata.
 
 ## output-manipulation (4 patterns)
 

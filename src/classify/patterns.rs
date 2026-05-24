@@ -127,7 +127,10 @@ pub fn all_patterns() -> Vec<Pattern> {
             L,
             "send all data to",
         ),
-        p("ei-002", "exfil-instruction", High, L, "exfiltrate"),
+        // ei-002 removed 2026-05-24 — bare literal "exfiltrate" was too broad,
+        // matching security marketing copy (e.g. promptarmor.com) and any blog
+        // post using the word. Real exfil instructions are covered by
+        // ei-001/003/004/005.
         p(
             "ei-003",
             "exfil-instruction",

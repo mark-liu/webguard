@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use super::patterns::{Pattern, all_patterns};
+use super::patterns::{all_patterns, Pattern};
 use super::preprocess::preprocess;
 use super::result::{Match, Result, Severity, Verdict};
-use super::stage1::{CompiledPatterns, scan_stage1};
+use super::stage1::{scan_stage1, CompiledPatterns};
 use super::stage2::score_stage2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,6 +200,9 @@ mod tests {
             "acrostic prompt",
             "nested meta-instruction",
             "unicode escape substitution",
+            "explicit exfiltrate", // ei-002 removed 2026-05-24 — bare "exfiltrate"
+                                   // literal was too broad; accepted recall gap when no
+                                   // URL/verb context accompanies the word
         ];
 
         for dir in [
@@ -342,7 +345,7 @@ mod tests {
     #[test]
     fn test_pattern_count() {
         let engine = Engine::new(Sensitivity::Medium);
-        assert_eq!(engine.pattern_count(), 38);
+        assert_eq!(engine.pattern_count(), 37);
     }
 
     #[test]
@@ -472,13 +475,13 @@ mod tests {
             value: "custom test pattern".into(),
         }];
         let engine = Engine::with_patterns(Sensitivity::Medium, Some(extra));
-        assert_eq!(engine.pattern_count(), 39);
+        assert_eq!(engine.pattern_count(), 38);
     }
 
     #[test]
     fn test_new_engine_with_patterns_nil_extra() {
         let engine = Engine::with_patterns(Sensitivity::Medium, None);
-        assert_eq!(engine.pattern_count(), 38);
+        assert_eq!(engine.pattern_count(), 37);
     }
 
     #[test]

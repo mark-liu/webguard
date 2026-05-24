@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.1 — 2026-05-24
+
+### Removed — pattern ei-002 (`exfiltrate` literal)
+
+The bare literal `exfiltrate` was matching legitimate content: security marketing
+copy (promptarmor.com, llm-guard, vigil-llm READMEs), webguard's own docs, and
+any blog post discussing exfiltration. A single occurrence of the word inside
+otherwise-benign prose triggered High-severity scoring and pushed totals over the
+medium-sensitivity threshold (4.5), producing a block.
+
+True exfiltration *instructions* are still covered by ei-001/003/004/005 — every
+remaining pattern in the category requires either a target verb (send/fetch/
+load/visit/open/navigate) or a destination URL. The accepted recall trade-off is
+prose that uses the word "exfiltrate" without an accompanying URL or imperative
+verb; that case is marked `explicit exfiltrate` in `known_gaps` (see
+`src/classify/engine.rs`).
+
+Pattern count: 38 → 37. No score-threshold change.
+
 ## 0.4.0 — 2026-05-17
 
 ### Security — audit log defang
