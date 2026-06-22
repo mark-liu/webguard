@@ -168,12 +168,18 @@ pub fn all_patterns() -> Vec<Pattern> {
             R,
             r"(?i)never\s+(mention|reveal|disclose|discuss)\s+(that|this|the|your)",
         ),
+        // om-004 tightened 2026-06-23 — old regex
+        // `(?i)(always|must|should)\s+respond\s+(with|by|using)` matched ordinary
+        // 3rd-person API-doc prose ("the API will always respond with JSON"),
+        // false-positive-blocking docs.claude.com/code.claude.com. Real injections
+        // pin the model's output: "respond only with", "respond with only",
+        // "respond with 'X'". Anchor on that pinned target instead of the adverb.
         p(
             "om-004",
             "output-manipulation",
             Medium,
             R,
-            r"(?i)(always|must|should)\s+respond\s+(with|by|using)\s+",
+            r#"(?i)respond\s+(only\s+with|with\s+only|with\s+["'\x{201C}\x{201D}\x{2018}\x{2019}])"#,
         ),
         // unicode-obfuscation (4)
         p(
@@ -219,12 +225,17 @@ pub fn all_patterns() -> Vec<Pattern> {
             R,
             r"(?i)base64[_\-]?decode",
         ),
+        // enc-003 tightened 2026-06-23 — bare `String\.fromCharCode\s*\(` matched
+        // the plain JS builtin shipped on millions of pages (amazon.com.au fired
+        // it 12×). The actual obfuscation signature is a *run* of numeric char-code
+        // literals decoding to a hidden string, so require 4+ comma-separated
+        // numbers. Keeps the "charcode obfuscation" payload, drops the FPs.
         p(
             "enc-003",
             "encoded-injection",
             Medium,
             R,
-            r"(?i)String\.fromCharCode\s*\(",
+            r"(?i)String\.fromCharCode\s*\(\s*\d+\s*(,\s*\d+\s*){3,}",
         ),
         // delimiter-injection (3)
         p(
