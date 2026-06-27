@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use super::patterns::{all_patterns, Pattern};
+use super::patterns::{Pattern, all_patterns};
 use super::preprocess::preprocess;
 use super::result::{Match, Result, Severity, Verdict};
-use super::stage1::{scan_stage1, CompiledPatterns};
+use super::stage1::{CompiledPatterns, scan_stage1};
 use super::stage2::score_stage2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
