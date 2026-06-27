@@ -610,7 +610,8 @@ const AKAMAI_PROXIMITY_BYTES: usize = 1024;
 ///        * Cloudflare JS: `cdn-cgi/challenge-platform` or `__cf_chl`
 ///        * Turnstile:     `challenges.cloudflare.com` or `cf-turnstile`
 ///        * Akamai:        `edgesuite` (their error-CDN domain, present even
-///                         when surrounding punctuation is entity-encoded)
+///          when surrounding punctuation is entity-encoded)
+///
 /// Bodies failing the second gate fall through to normal classification —
 /// the safe default — so the spoofing surface is bounded.
 fn detect_challenge(status_code: u16, body: &str) -> Option<ChallengeKind> {
