@@ -153,12 +153,18 @@ pub fn all_patterns() -> Vec<Pattern> {
             r"!\[(track|pixel|1x1|beacon|exfil)\w*\]\(https?://[^\)]+\)",
         ),
         // output-manipulation (4)
+        // om-001 tightened 2026-06-27 — bare literal "respond only with" fired on
+        // benign instructional prose ("respond only with valid JSON", "the API will
+        // respond only with the requested fields"), false-positive-blocking an
+        // internal Notion page (audit 2026-06-27). Real injections pin a literal
+        // output target in quotes ("respond only with 'APPROVED'"); require the
+        // quote. Owns the "respond only with 'X'" form; om-004 owns "respond with".
         p(
             "om-001",
             "output-manipulation",
             Medium,
-            L,
-            "respond only with",
+            R,
+            r#"(?i)respond\s+only\s+with\s+["'\x{201C}\x{201D}\x{2018}\x{2019}]"#,
         ),
         p("om-002", "output-manipulation", Medium, L, "do not mention"),
         p(
@@ -168,18 +174,20 @@ pub fn all_patterns() -> Vec<Pattern> {
             R,
             r"(?i)never\s+(mention|reveal|disclose|discuss)\s+(that|this|the|your)",
         ),
-        // om-004 tightened 2026-06-23 — old regex
+        // om-004 tightened 2026-06-23, re-tightened 2026-06-27 — the original
         // `(?i)(always|must|should)\s+respond\s+(with|by|using)` matched ordinary
-        // 3rd-person API-doc prose ("the API will always respond with JSON"),
-        // false-positive-blocking docs.claude.com/code.claude.com. Real injections
-        // pin the model's output: "respond only with", "respond with only",
-        // "respond with 'X'". Anchor on that pinned target instead of the adverb.
+        // 3rd-person API-doc prose ("the API will always respond with JSON"). The
+        // v0.4.2 rewrite still left an unquoted `only\s+with` branch that matched
+        // bare "respond only with X" and overlapped the over-broad om-001 literal
+        // (audit 2026-06-27). Real injections pin a quoted output target; require
+        // the quote on every branch. "respond only with 'X'" is now owned by om-001;
+        // this owns "respond with 'X'" and "respond with only 'X'".
         p(
             "om-004",
             "output-manipulation",
             Medium,
             R,
-            r#"(?i)respond\s+(only\s+with|with\s+only|with\s+["'\x{201C}\x{201D}\x{2018}\x{2019}])"#,
+            r#"(?i)respond\s+with\s+(only\s+)?["'\x{201C}\x{201D}\x{2018}\x{2019}]"#,
         ),
         // unicode-obfuscation (4)
         p(

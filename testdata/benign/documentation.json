@@ -8,5 +8,9 @@
   {"content": "Use `eval()` carefully as it can execute arbitrary code. Consider `JSON.parse()` instead.", "description": "eval security docs"},
   {"content": "The role-based access control system uses JSON objects like {\"role\": \"admin\"} for configuration.", "description": "RBAC docs with role JSON"},
   {"content": "Send the data to the API endpoint using a POST request with the following headers.", "description": "API docs with send data"},
-  {"content": "The system prompt engineering guide explains how to write effective prompts for LLMs.", "description": "prompt engineering article"}
+  {"content": "The system prompt engineering guide explains how to write effective prompts for LLMs.", "description": "prompt engineering article"},
+  {"content": "For predictable parsing, instruct the model to respond only with valid JSON and no prose.", "description": "respond only with (unquoted) - should not trigger om-001"},
+  {"content": "The lightweight endpoint will respond only with the requested fields to reduce payload size.", "description": "respond only with (3rd-person API doc) - should not trigger om-001"},
+  {"content": "When summarizing the alert, the bot should respond with only the node ID and current status.", "description": "respond with only (unquoted) - should not trigger om-004"},
+  {"content": "Configure the webhook to respond with a 200 status code so the sender stops retrying.", "description": "respond with (unquoted, no pinned literal) - should not trigger om-004"}
 ]
