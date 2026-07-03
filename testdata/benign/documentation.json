@@ -12,5 +12,9 @@
   {"content": "For predictable parsing, instruct the model to respond only with valid JSON and no prose.", "description": "respond only with (unquoted) - should not trigger om-001"},
   {"content": "The lightweight endpoint will respond only with the requested fields to reduce payload size.", "description": "respond only with (3rd-person API doc) - should not trigger om-001"},
   {"content": "When summarizing the alert, the bot should respond with only the node ID and current status.", "description": "respond with only (unquoted) - should not trigger om-004"},
-  {"content": "Configure the webhook to respond with a 200 status code so the sender stops retrying.", "description": "respond with (unquoted, no pinned literal) - should not trigger om-004"}
+  {"content": "Configure the webhook to respond with a 200 status code so the sender stops retrying.", "description": "respond with (unquoted, no pinned literal) - should not trigger om-004"},
+  {"content": "To get started, visit https://dashboard.example.com/signup and create your free account.", "description": "CTA visit URL (Slack-shared landing page) - should not trigger ei-004"},
+  {"content": "Open https://localhost:3000 in your browser to view the running application.", "description": "dev docs open localhost URL - should not trigger ei-004"},
+  {"content": "The client will fetch https://api.github.com/repos/owner/name and parse the JSON response.", "description": "API docs fetch+parse response - should not trigger ei-004"},
+  {"content": "You can load https://cdn.jsdelivr.net/npm/chart.js directly from the CDN in a script tag.", "description": "CDN load URL in docs - should not trigger ei-004"}
 ]
