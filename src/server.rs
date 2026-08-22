@@ -203,7 +203,7 @@ impl WebGuardServer {
             let body_msg = format!(
                 "[BROWSER REQUIRED: {} detected at {}. Fetch via mcp__playwright__browser_navigate.]",
                 challenge.display_name(),
-                &fetch_result.final_url,
+                fetch_result.final_url,
             );
             return Ok(CallToolResult::success(vec![Content::text(format!(
                 "{body_msg}\n\n{metadata}"
