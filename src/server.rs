@@ -35,7 +35,8 @@ struct FetchParams {
     /// Return raw HTML instead of markdown
     #[serde(default)]
     raw: Option<bool>,
-    /// Maximum characters to return (0 = unlimited)
+    /// Maximum characters to return. Unset = server default
+    /// (WEBGUARD_DEFAULT_MAX_CHARS, 90000); 0 = unlimited
     #[serde(default)]
     max_chars: Option<i64>,
 }
@@ -101,7 +102,7 @@ impl WebGuardServer {
         let url = params.url;
         let headers = params.headers;
         let raw = params.raw;
-        let max_chars = params.max_chars;
+        let max_chars = effective_max_chars(params.max_chars);
 
         let config = self.config_snapshot();
         let total_start = Instant::now();
@@ -299,11 +300,7 @@ impl WebGuardServer {
                     result.score
                 );
                 let mut output = output_content;
-                if let Some(max) = max_chars {
-                    if max > 0 && output.len() as i64 > max {
-                        safe_truncate(&mut output, max as usize);
-                    }
-                }
+                apply_max_chars(&mut output, max_chars);
                 content.push_str(&output);
                 content.push_str("\n\n");
                 content.push_str(&metadata);
@@ -311,11 +308,7 @@ impl WebGuardServer {
             }
             Verdict::Pass => {
                 let mut output = output_content;
-                if let Some(max) = max_chars {
-                    if max > 0 && output.len() as i64 > max {
-                        safe_truncate(&mut output, max as usize);
-                    }
-                }
+                apply_max_chars(&mut output, max_chars);
                 format!("{output}\n\n{metadata}")
             }
         };
@@ -832,6 +825,39 @@ pub fn is_doc_url(u: &Url) -> bool {
 /// Truncate a string to at most `max_bytes` bytes without panicking on
 /// multi-byte UTF-8 code points. Keeps only complete characters that
 /// fit entirely within the byte budget.
+/// Default response cap when the caller sets no `max_chars`. ~22k tokens: under
+/// the 25k-token tool-result cap that otherwise spills the page to a file.
+pub const DEFAULT_MAX_CHARS: i64 = 90_000;
+
+/// Caller value wins; `0` opts out; unset falls back to WEBGUARD_DEFAULT_MAX_CHARS
+/// or the built-in default.
+pub fn effective_max_chars(requested: Option<i64>) -> Option<i64> {
+    match requested {
+        Some(n) => Some(n),
+        None => Some(
+            std::env::var("WEBGUARD_DEFAULT_MAX_CHARS")
+                .ok()
+                .and_then(|v| v.trim().parse::<i64>().ok())
+                .unwrap_or(DEFAULT_MAX_CHARS),
+        ),
+    }
+}
+
+/// Truncate `output` to `max` chars (None/0 = unlimited) and say so in-band,
+/// so a caller can re-fetch with `max_chars: 0` instead of guessing.
+pub fn apply_max_chars(output: &mut String, max: Option<i64>) {
+    if let Some(max) = max
+        && max > 0
+        && output.len() as i64 > max
+    {
+        let full = output.len();
+        safe_truncate(output, max as usize);
+        output.push_str(&format!(
+            "\n\n[webguard: truncated to {max} of {full} chars; pass max_chars: 0 for the full page]"
+        ));
+    }
+}
+
 fn safe_truncate(s: &mut String, max_bytes: usize) {
     if s.len() <= max_bytes {
         return;

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.5 - 2026-08-22
+
+### Changed - `max_chars` defaults to 90000
+
+`webguard_fetch` with no `max_chars` returned the whole page. 99 of 241 calls in
+30d on one host exceeded the client's 25k-token tool-result cap, so the page was
+spilled to a file and the model saw none of it. The server now caps at 90000
+chars (~22k tokens) unless the caller sets `max_chars`; `0` still means
+unlimited, and `WEBGUARD_DEFAULT_MAX_CHARS` overrides the default. Truncated
+output ends with `[webguard: truncated to N of M chars; pass max_chars: 0 for
+the full page]` so the caller can re-fetch deliberately.
+
 ## 0.4.1 — 2026-05-24
 
 ### Removed — pattern ei-002 (`exfiltrate` literal)
