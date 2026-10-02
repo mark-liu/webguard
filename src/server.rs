@@ -36,9 +36,13 @@ struct FetchParams {
     #[serde(default)]
     raw: Option<bool>,
     /// Maximum characters to return. Unset = server default
-    /// (WEBGUARD_DEFAULT_MAX_CHARS, 90000); 0 = unlimited
+    /// (WEBGUARD_DEFAULT_MAX_CHARS, 50000); 0 = unlimited
     #[serde(default)]
     max_chars: Option<i64>,
+    /// Character offset to start from, for reading past a truncated page.
+    /// Use the `next offset` in the truncation trailer. Unset = 0
+    #[serde(default)]
+    offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -103,6 +107,7 @@ impl WebGuardServer {
         let headers = params.headers;
         let raw = params.raw;
         let max_chars = effective_max_chars(params.max_chars);
+        let offset = params.offset.unwrap_or(0).max(0) as usize;
 
         let config = self.config_snapshot();
         let total_start = Instant::now();
@@ -218,6 +223,11 @@ impl WebGuardServer {
                 .unwrap_or_else(|_| scan_content.clone())
         };
 
+        // Slice before classifying is fine: the scan below sees the whole
+        // body, so every window of a document gets the same verdict.
+        let mut output_content = output_content;
+        apply_range(&mut output_content, offset, max_chars);
+
         // Build suppressed categories
         let mut suppress = config
             .suppressed_categories_for_domain(&domain)
@@ -299,17 +309,13 @@ impl WebGuardServer {
                     "⚠️ WARNING: Potential prompt injection detected (score: {:.2})\n\n",
                     result.score
                 );
-                let mut output = output_content;
-                apply_max_chars(&mut output, max_chars);
-                content.push_str(&output);
+                content.push_str(&output_content);
                 content.push_str("\n\n");
                 content.push_str(&metadata);
                 content
             }
             Verdict::Pass => {
-                let mut output = output_content;
-                apply_max_chars(&mut output, max_chars);
-                format!("{output}\n\n{metadata}")
+                format!("{output_content}\n\n{metadata}")
             }
         };
 
@@ -437,9 +443,10 @@ impl WebGuardServer {
                     .and_then(|u| u.host_str().map(str::to_string))
             };
             if let Some(host) = host
-                && (entry.verdict == "block" || entry.verdict == "warn") {
-                    domain_verdicts.entry(host).or_insert(entry.verdict.clone());
-                }
+                && (entry.verdict == "block" || entry.verdict == "warn")
+            {
+                domain_verdicts.entry(host).or_insert(entry.verdict.clone());
+            }
 
             total_fetch_ms += entry.fetch_time_ms;
             total_scan_ms += entry.scan_time_ms;
@@ -839,32 +846,46 @@ pub fn effective_max_chars(requested: Option<i64>) -> Option<i64> {
     }
 }
 
-/// Truncate `output` to `max` chars (None/0 = unlimited) and say so in-band,
-/// so a caller can re-fetch with `max_chars: 0` instead of guessing.
-pub fn apply_max_chars(output: &mut String, max: Option<i64>) {
-    if let Some(max) = max
-        && max > 0
-        && output.len() as i64 > max
-    {
-        let full = output.len();
-        safe_truncate(output, max as usize);
-        output.push_str(&format!(
-            "\n\n[webguard: truncated to {max} of {full} chars; pass max_chars: 0 for the full page]"
-        ));
-    }
+/// What `apply_range` did to the text, for the audit row.
+#[derive(Debug, PartialEq, Eq)]
+pub struct RangeInfo {
+    /// Length of the whole document in chars.
+    pub total: usize,
+    pub truncated: bool,
 }
 
-fn safe_truncate(s: &mut String, max_bytes: usize) {
-    if s.len() <= max_bytes {
-        return;
+/// Byte index of the `n`th char, or `s.len()` when `n` is past the end.
+fn byte_at(s: &str, n: usize) -> usize {
+    s.char_indices().nth(n).map_or(s.len(), |(i, _)| i)
+}
+
+/// Keep `max` chars (None/0 = unlimited) starting at char `offset`, and say so
+/// in-band: a truncated window ends with the next offset to pass.
+pub fn apply_range(output: &mut String, offset: usize, max: Option<i64>) -> RangeInfo {
+    let total = output.chars().count();
+    let start = offset.min(total);
+    let take = match max {
+        Some(m) if m > 0 => (m as usize).min(total - start),
+        _ => total - start,
+    };
+    let end = start + take;
+    let truncated = end < total;
+    if start == 0 && !truncated {
+        return RangeInfo { total, truncated };
     }
-    let truncate_at = s
-        .char_indices()
-        .map(|(i, c)| i + c.len_utf8())
-        .take_while(|end| *end <= max_bytes)
-        .last()
-        .unwrap_or(0);
-    s.truncate(truncate_at);
+
+    let (from, to) = (byte_at(output, start), byte_at(output, end));
+    *output = output[from..to].to_string();
+    if truncated {
+        output.push_str(&format!(
+            "\n\n[webguard: chars {start}-{end} of {total}; pass offset: {end} to read the next window]"
+        ));
+    } else if offset > total {
+        output.push_str(&format!(
+            "[webguard: offset {offset} is past the end of {total} chars]"
+        ));
+    }
+    RangeInfo { total, truncated }
 }
 
 pub fn pct(n: usize, total: usize) -> f64 {
@@ -1070,60 +1091,69 @@ mod tests {
     }
 
     #[test]
-    fn test_safe_truncate_ascii() {
-        let mut s = "hello world".to_string();
-        safe_truncate(&mut s, 5);
+    fn test_apply_range_default_window_and_trailer() {
+        let mut s = "abcdefghij".to_string();
+        let info = apply_range(&mut s, 0, Some(4));
+        assert_eq!(
+            info,
+            RangeInfo {
+                total: 10,
+                truncated: true
+            }
+        );
+        assert!(s.starts_with("abcd\n\n[webguard: chars 0-4 of 10;"));
+        assert!(s.contains("pass offset: 4 "));
+    }
+
+    #[test]
+    fn test_apply_range_follow_up_reads_whole_doc() {
+        let doc: String = ('a'..='z').cycle().take(95).collect();
+        let (mut got, mut offset) = (String::new(), 0usize);
+        loop {
+            let mut w = doc.clone();
+            let info = apply_range(&mut w, offset, Some(40));
+            if !info.truncated {
+                got.push_str(&w);
+                break;
+            }
+            let trailer = w.find("\n\n[webguard:").unwrap();
+            got.push_str(&w[..trailer]);
+            offset += 40;
+        }
+        assert_eq!(got, doc);
+    }
+
+    #[test]
+    fn test_apply_range_char_boundaries_multibyte() {
+        // 4-byte emoji and 3-byte CJK: a byte-based cut would split or panic.
+        let mut s = "\u{1F600}\u{4F60}\u{1F602}\u{597D}".to_string();
+        let info = apply_range(&mut s, 1, Some(2));
+        assert_eq!(info.total, 4);
+        assert!(s.starts_with("\u{4F60}\u{1F602}\n\n[webguard: chars 1-3 of 4;"));
+    }
+
+    #[test]
+    fn test_apply_range_unlimited_and_exact_fit() {
+        let mut s = "hello".to_string();
+        assert!(!apply_range(&mut s, 0, Some(0)).truncated);
+        assert!(!apply_range(&mut s, 0, Some(5)).truncated);
         assert_eq!(s, "hello");
     }
 
     #[test]
-    fn test_safe_truncate_no_op_when_within_limit() {
-        let mut s = "short".to_string();
-        safe_truncate(&mut s, 100);
-        assert_eq!(s, "short");
+    fn test_apply_range_last_window_has_no_trailer() {
+        let mut s = "hello world".to_string();
+        let info = apply_range(&mut s, 6, Some(50));
+        assert!(!info.truncated);
+        assert_eq!(s, "world");
     }
 
     #[test]
-    fn test_safe_truncate_emoji_no_panic() {
-        // Emoji are 4 bytes each. Truncating at byte 5 (mid-second emoji)
-        // should not panic -- should truncate to the first complete emoji.
-        let mut s = "\u{1F600}\u{1F601}\u{1F602}".to_string(); // 3 emoji, 12 bytes
-        assert_eq!(s.len(), 12);
-        safe_truncate(&mut s, 5); // falls inside second emoji
-        assert_eq!(s, "\u{1F600}"); // only first emoji survives
-    }
-
-    #[test]
-    fn test_safe_truncate_cjk_no_panic() {
-        // CJK characters are 3 bytes each
-        let mut s = "\u{4F60}\u{597D}\u{4E16}\u{754C}".to_string(); // 4 chars, 12 bytes
-        assert_eq!(s.len(), 12);
-        safe_truncate(&mut s, 7); // falls inside 3rd char
-        assert_eq!(s, "\u{4F60}\u{597D}"); // first two chars
-    }
-
-    #[test]
-    fn test_safe_truncate_mixed_content() {
-        // Mix of ASCII and multi-byte: "Hi \u{1F600} world"
-        let mut s = "Hi \u{1F600} world".to_string();
-        let emoji_end = 3 + 4; // "Hi " (3 bytes) + emoji (4 bytes) = 7
-        safe_truncate(&mut s, emoji_end);
-        assert_eq!(s, "Hi \u{1F600}");
-    }
-
-    #[test]
-    fn test_safe_truncate_zero() {
-        let mut s = "hello".to_string();
-        safe_truncate(&mut s, 0);
-        assert_eq!(s, "");
-    }
-
-    #[test]
-    fn test_safe_truncate_exact_boundary() {
-        // Truncate at exact char boundary should work
-        let mut s = "\u{1F600}\u{1F601}".to_string(); // 8 bytes
-        safe_truncate(&mut s, 4); // exact end of first emoji
-        assert_eq!(s, "\u{1F600}");
+    fn test_apply_range_offset_past_end() {
+        let mut s = "abc".to_string();
+        let info = apply_range(&mut s, 99, Some(10));
+        assert!(!info.truncated);
+        assert!(s.contains("offset 99 is past the end of 3 chars"));
     }
 
     #[test]

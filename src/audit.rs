@@ -193,33 +193,35 @@ impl Logger {
 
     pub fn log(&self, entry: &Entry) {
         if let Some(ref file) = self.file
-            && let Ok(mut f) = file.lock() {
-                let mut sanitized = entry.clone();
-                // Extract host BEFORE defanging so report aggregation by
-                // domain still works post-Tier-2 (Url::parse rejects the
-                // defanged `:⁄⁄` form by design).
-                if sanitized.host.is_empty() {
-                    sanitized.host = url::Url::parse(&sanitized.url)
-                        .ok()
-                        .and_then(|u| u.host_str().map(str::to_string))
-                        .unwrap_or_default();
-                }
-                sanitized.url = defang_url(&sanitized.url);
-                // rquest/reqwest error Display can embed the full URL ("for
-                // url (...)"). Without this, the error field would silently
-                // reopen the channel defang_url just closed.
-                sanitized.error = defang_urls_in_text(&sanitized.error);
-                if let Ok(json) = serde_json::to_string(&sanitized) {
-                    let _ = writeln!(f, "{json}");
-                }
+            && let Ok(mut f) = file.lock()
+        {
+            let mut sanitized = entry.clone();
+            // Extract host BEFORE defanging so report aggregation by
+            // domain still works post-Tier-2 (Url::parse rejects the
+            // defanged `:⁄⁄` form by design).
+            if sanitized.host.is_empty() {
+                sanitized.host = url::Url::parse(&sanitized.url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_string))
+                    .unwrap_or_default();
             }
+            sanitized.url = defang_url(&sanitized.url);
+            // rquest/reqwest error Display can embed the full URL ("for
+            // url (...)"). Without this, the error field would silently
+            // reopen the channel defang_url just closed.
+            sanitized.error = defang_urls_in_text(&sanitized.error);
+            if let Ok(json) = serde_json::to_string(&sanitized) {
+                let _ = writeln!(f, "{json}");
+            }
+        }
     }
 
     pub fn close(&self) {
         if let Some(ref file) = self.file
-            && let Ok(f) = file.lock() {
-                let _ = f.sync_all();
-            }
+            && let Ok(f) = file.lock()
+        {
+            let _ = f.sync_all();
+        }
     }
 }
 

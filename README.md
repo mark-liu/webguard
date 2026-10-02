@@ -72,7 +72,8 @@ Fetches a URL with SSRF protection and prompt injection scanning.
 | `url` | string | yes | URL to fetch (http/https) |
 | `headers` | object | no | Custom HTTP headers |
 | `raw` | boolean | no | Return raw HTML instead of markdown |
-| `max_chars` | number | no | Truncate response to N characters. Unset = server default (90000, env `WEBGUARD_DEFAULT_MAX_CHARS`); 0 = unlimited. Truncated output ends with an in-band `[webguard: truncated ...]` marker |
+| `max_chars` | number | no | Return at most N characters (chars, not bytes). Unset = server default (50000, env `WEBGUARD_DEFAULT_MAX_CHARS`); 0 = unlimited |
+| `offset` | number | no | Character offset to start from (default 0). A truncated response ends with `[webguard: chars A-B of TOTAL; pass offset: B to read the next window]` |
 
 **On PASS**: returns extracted markdown content + metadata.
 **On WARN** (mode=warn): returns content with a warning banner + metadata.
@@ -195,7 +196,7 @@ audit:
   path: ""  # default: ~/.local/share/webguard-mcp/audit.jsonl
 ```
 
-Environment: `WEBGUARD_DEFAULT_MAX_CHARS` overrides the 90000-char response cap applied when a caller omits `max_chars` (a 25k-token MCP result is spilled to a file by the client and never reaches the model as text).
+Environment: `WEBGUARD_DEFAULT_MAX_CHARS` overrides the 50000-char response cap applied when a caller omits `max_chars` (a 25k-token MCP result is spilled to a file by the client and never reaches the model as text).
 
 ## External Patterns
 

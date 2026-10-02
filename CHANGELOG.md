@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed - non-HTML bodies returned verbatim
+
+`text/*` (except HTML), JSON, TOML, YAML, XML and JS responses skip the
+HTML-to-markdown pass, so raw files match `curl` byte for byte. The injection
+scan is unchanged.
+
+### Added - `offset` range reads, default cap 50000
+
+`webguard_fetch` takes `offset` (chars). A truncated window ends with a trailer
+naming the total length and the next offset. `max_chars` now counts chars, not
+bytes, and the default drops from 90000 to 50000 to fit under the client's
+tool-result wall. The whole body is scanned once per call, so every window of a
+document gets the same verdict.
+
 ## 0.4.5 - 2026-08-22
 
 ### Changed - `max_chars` defaults to 90000

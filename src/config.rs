@@ -176,9 +176,10 @@ impl Config {
         let domain_lower = domain.to_lowercase();
         // Exact match
         if let Some(dc) = self.domains.get(&domain_lower)
-            && !dc.sensitivity.is_empty() {
-                return &dc.sensitivity;
-            }
+            && !dc.sensitivity.is_empty()
+        {
+            return &dc.sensitivity;
+        }
         // Wildcard match
         for (pattern, dc) in &self.domains {
             if !dc.sensitivity.is_empty() && match_wildcard(pattern, &domain_lower) {
@@ -192,9 +193,10 @@ impl Config {
         let domain_lower = domain.to_lowercase();
         // Exact match
         if let Some(dc) = self.domains.get(&domain_lower)
-            && !dc.suppress.is_empty() {
-                return Some(to_set(&dc.suppress));
-            }
+            && !dc.suppress.is_empty()
+        {
+            return Some(to_set(&dc.suppress));
+        }
         // Wildcard match
         for (pattern, dc) in &self.domains {
             if !dc.suppress.is_empty() && match_wildcard(pattern, &domain_lower) {
@@ -208,15 +210,17 @@ impl Config {
         let domain_lower = domain.to_lowercase();
         // Exact match
         if let Some(dc) = self.domains.get(&domain_lower)
-            && let Some(t) = dc.timeout {
-                return t;
-            }
+            && let Some(t) = dc.timeout
+        {
+            return t;
+        }
         // Wildcard match
         for (pattern, dc) in &self.domains {
             if let Some(t) = dc.timeout
-                && match_wildcard(pattern, &domain_lower) {
-                    return t;
-                }
+                && match_wildcard(pattern, &domain_lower)
+            {
+                return t;
+            }
         }
         self.timeout
     }

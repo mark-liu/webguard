@@ -37,7 +37,6 @@ pub struct ClassifyOptions {
     pub suppress_categories: HashMap<String, bool>,
 }
 
-
 pub struct Engine {
     sensitivity: Sensitivity,
     threshold: f64,
