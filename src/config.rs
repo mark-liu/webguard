@@ -175,11 +175,10 @@ impl Config {
     pub fn sensitivity_for_domain(&self, domain: &str) -> &str {
         let domain_lower = domain.to_lowercase();
         // Exact match
-        if let Some(dc) = self.domains.get(&domain_lower) {
-            if !dc.sensitivity.is_empty() {
+        if let Some(dc) = self.domains.get(&domain_lower)
+            && !dc.sensitivity.is_empty() {
                 return &dc.sensitivity;
             }
-        }
         // Wildcard match
         for (pattern, dc) in &self.domains {
             if !dc.sensitivity.is_empty() && match_wildcard(pattern, &domain_lower) {
@@ -192,11 +191,10 @@ impl Config {
     pub fn suppressed_categories_for_domain(&self, domain: &str) -> Option<HashMap<String, bool>> {
         let domain_lower = domain.to_lowercase();
         // Exact match
-        if let Some(dc) = self.domains.get(&domain_lower) {
-            if !dc.suppress.is_empty() {
+        if let Some(dc) = self.domains.get(&domain_lower)
+            && !dc.suppress.is_empty() {
                 return Some(to_set(&dc.suppress));
             }
-        }
         // Wildcard match
         for (pattern, dc) in &self.domains {
             if !dc.suppress.is_empty() && match_wildcard(pattern, &domain_lower) {
@@ -209,18 +207,16 @@ impl Config {
     pub fn timeout_for_domain(&self, domain: &str) -> Duration {
         let domain_lower = domain.to_lowercase();
         // Exact match
-        if let Some(dc) = self.domains.get(&domain_lower) {
-            if let Some(t) = dc.timeout {
+        if let Some(dc) = self.domains.get(&domain_lower)
+            && let Some(t) = dc.timeout {
                 return t;
             }
-        }
         // Wildcard match
         for (pattern, dc) in &self.domains {
-            if let Some(t) = dc.timeout {
-                if match_wildcard(pattern, &domain_lower) {
+            if let Some(t) = dc.timeout
+                && match_wildcard(pattern, &domain_lower) {
                     return t;
                 }
-            }
         }
         self.timeout
     }

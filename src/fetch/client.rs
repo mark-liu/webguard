@@ -72,11 +72,10 @@ fn apply_header_overrides(headers: &mut HeaderMap, overrides: &HashMap<String, S
         if let (Ok(name), Ok(val)) = (
             HeaderName::from_bytes(k.as_bytes()),
             HeaderValue::from_str(v),
-        ) {
-            if OVERRIDABLE_HEADERS.contains(&name.as_str()) {
+        )
+            && OVERRIDABLE_HEADERS.contains(&name.as_str()) {
                 headers.insert(name, val);
             }
-        }
     }
 }
 

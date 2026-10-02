@@ -436,11 +436,10 @@ impl WebGuardServer {
                     .ok()
                     .and_then(|u| u.host_str().map(str::to_string))
             };
-            if let Some(host) = host {
-                if entry.verdict == "block" || entry.verdict == "warn" {
+            if let Some(host) = host
+                && (entry.verdict == "block" || entry.verdict == "warn") {
                     domain_verdicts.entry(host).or_insert(entry.verdict.clone());
                 }
-            }
 
             total_fetch_ms += entry.fetch_time_ms;
             total_scan_ms += entry.scan_time_ms;
@@ -822,12 +821,9 @@ pub fn is_doc_url(u: &Url) -> bool {
     false
 }
 
-/// Truncate a string to at most `max_bytes` bytes without panicking on
-/// multi-byte UTF-8 code points. Keeps only complete characters that
-/// fit entirely within the byte budget.
-/// Default response cap when the caller sets no `max_chars`. ~22k tokens: under
-/// the 25k-token tool-result cap that otherwise spills the page to a file.
-pub const DEFAULT_MAX_CHARS: i64 = 90_000;
+/// Default response cap when the caller sets no `max_chars`. Sits under the
+/// client's ~50k-char tool-result wall, past which the page spills to a file.
+pub const DEFAULT_MAX_CHARS: i64 = 50_000;
 
 /// Caller value wins; `0` opts out; unset falls back to WEBGUARD_DEFAULT_MAX_CHARS
 /// or the built-in default.

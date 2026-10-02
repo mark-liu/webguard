@@ -21,8 +21,8 @@ pub fn detect_base64(content: &str) -> Vec<EncodedBlob> {
     let mut blobs = Vec::new();
     for m in BASE64_RE.find_iter(content) {
         let encoded = m.as_str();
-        if let Some(decoded) = decode_base64(encoded) {
-            if decoded.len() >= 4 {
+        if let Some(decoded) = decode_base64(encoded)
+            && decoded.len() >= 4 {
                 blobs.push(EncodedBlob {
                     encoded: encoded.to_string(),
                     decoded,
@@ -31,7 +31,6 @@ pub fn detect_base64(content: &str) -> Vec<EncodedBlob> {
                     encoding: "base64".to_string(),
                 });
             }
-        }
     }
     blobs
 }
@@ -39,13 +38,11 @@ pub fn detect_base64(content: &str) -> Vec<EncodedBlob> {
 pub fn decode_base64(blob: &str) -> Option<String> {
     let engines = [&STANDARD, &STANDARD_NO_PAD, &URL_SAFE, &URL_SAFE_NO_PAD];
     for engine in engines {
-        if let Ok(bytes) = engine.decode(blob) {
-            if let Ok(text) = String::from_utf8(bytes) {
-                if !text.is_empty() {
+        if let Ok(bytes) = engine.decode(blob)
+            && let Ok(text) = String::from_utf8(bytes)
+                && !text.is_empty() {
                     return Some(text);
                 }
-            }
-        }
     }
     None
 }

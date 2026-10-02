@@ -192,8 +192,8 @@ impl Logger {
     }
 
     pub fn log(&self, entry: &Entry) {
-        if let Some(ref file) = self.file {
-            if let Ok(mut f) = file.lock() {
+        if let Some(ref file) = self.file
+            && let Ok(mut f) = file.lock() {
                 let mut sanitized = entry.clone();
                 // Extract host BEFORE defanging so report aggregation by
                 // domain still works post-Tier-2 (Url::parse rejects the
@@ -213,15 +213,13 @@ impl Logger {
                     let _ = writeln!(f, "{json}");
                 }
             }
-        }
     }
 
     pub fn close(&self) {
-        if let Some(ref file) = self.file {
-            if let Ok(f) = file.lock() {
+        if let Some(ref file) = self.file
+            && let Ok(f) = file.lock() {
                 let _ = f.sync_all();
             }
-        }
     }
 }
 

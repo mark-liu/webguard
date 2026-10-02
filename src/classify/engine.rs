@@ -32,17 +32,11 @@ impl Sensitivity {
     }
 }
 
+#[derive(Default)]
 pub struct ClassifyOptions {
     pub suppress_categories: HashMap<String, bool>,
 }
 
-impl Default for ClassifyOptions {
-    fn default() -> Self {
-        ClassifyOptions {
-            suppress_categories: HashMap::new(),
-        }
-    }
-}
 
 pub struct Engine {
     sensitivity: Sensitivity,
