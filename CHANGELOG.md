@@ -16,6 +16,14 @@ bytes, and the default drops from 90000 to 50000 to fit under the client's
 tool-result wall. The whole body is scanned once per call, so every window of a
 document gets the same verdict.
 
+### Added - audit row size fields and `empty-body` verdict
+
+Audit rows gain `content_type`, `bytes`, `extracted_chars`, `truncated` and
+`cap` (zero values omitted; `truncated` means the returned window was cut by
+`cap`). A 2xx HTML response extracting to under 50 chars logs and reports
+verdict `empty-body` (JS shell) instead of `pass`. `webguard_report` shows the
+empty-body count and the truncation rate over rows that carry size data.
+
 ## 0.4.5 - 2026-08-22
 
 ### Changed - `max_chars` defaults to 90000

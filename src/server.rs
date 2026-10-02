@@ -160,6 +160,7 @@ impl WebGuardServer {
                     0,
                     &e,
                     "",
+                    audit::FetchStats::default(),
                 );
                 return Ok(CallToolResult::error(vec![Content::text(format!(
                     "Fetch error: {e}"
@@ -198,6 +199,11 @@ impl WebGuardServer {
                 fetch_result.status_code,
                 "",
                 challenge.slug(),
+                audit::FetchStats {
+                    content_type: fetch_result.content_type.clone(),
+                    bytes: body.len(),
+                    ..Default::default()
+                },
             );
             let metadata = format_browser_required_metadata(
                 &fetch_result.final_url,
@@ -226,7 +232,7 @@ impl WebGuardServer {
         // Slice before classifying is fine: the scan below sees the whole
         // body, so every window of a document gets the same verdict.
         let mut output_content = output_content;
-        apply_range(&mut output_content, offset, max_chars);
+        let range = apply_range(&mut output_content, offset, max_chars);
 
         // Build suppressed categories
         let mut suppress = config
@@ -262,6 +268,27 @@ impl WebGuardServer {
             Verdict::Pass
         };
 
+        // A 2xx HTML page that extracts to almost nothing is a JS shell, so
+        // "pass" must not read as "has content". Verbatim types may be tiny.
+        let verdict_label = if verdict == Verdict::Pass
+            && is_empty_body(
+                fetch_result.status_code,
+                &fetch_result.content_type,
+                raw_mode,
+                range.total,
+            ) {
+            "empty-body".to_string()
+        } else {
+            verdict.to_string()
+        };
+        let stats = audit::FetchStats {
+            content_type: fetch_result.content_type.clone(),
+            bytes: body.len(),
+            extracted_chars: range.total,
+            truncated: range.truncated && verdict != Verdict::Block,
+            cap: max_chars.filter(|m| *m > 0).map_or(0, |m| m as usize),
+        };
+
         let total_dur = total_start.elapsed();
 
         // Log audit
@@ -277,7 +304,7 @@ impl WebGuardServer {
 
         self.log_audit(
             &url,
-            &verdict.to_string(),
+            &verdict_label,
             result.score,
             match_summaries,
             fetch_dur,
@@ -286,11 +313,12 @@ impl WebGuardServer {
             fetch_result.status_code,
             "",
             "",
+            stats,
         );
 
         // Format metadata
         let metadata = format_metadata(
-            &verdict.to_string(),
+            &verdict_label,
             result.score,
             &result.matches,
             fetch_dur,
@@ -413,6 +441,10 @@ impl WebGuardServer {
         let mut warn_count = 0usize;
         let mut error_count = 0usize;
         let mut browser_required_count = 0usize;
+        let mut empty_body_count = 0usize;
+        // Rows from before 0.4.6 carry no stats; keep them out of the rate.
+        let mut with_stats = 0usize;
+        let mut truncated_count = 0usize;
         let mut pattern_hits: HashMap<String, usize> = HashMap::new();
         let mut domain_verdicts: HashMap<String, String> = HashMap::new();
         let mut total_fetch_ms = 0.0f64;
@@ -425,7 +457,13 @@ impl WebGuardServer {
                 "warn" => warn_count += 1,
                 "error" => error_count += 1,
                 "browser-required" => browser_required_count += 1,
+                "empty-body" => empty_body_count += 1,
                 _ => {}
+            }
+
+            if entry.stats.extracted_chars > 0 {
+                with_stats += 1;
+                truncated_count += usize::from(entry.stats.truncated);
             }
 
             for m in &entry.matches {
@@ -466,12 +504,16 @@ impl WebGuardServer {
              - Block: {block_count} ({:.1}%)\n\
              - Warn: {warn_count} ({:.1}%)\n\
              - Error: {error_count} ({:.1}%)\n\
-             - Browser required: {browser_required_count} ({:.1}%)\n",
+             - Browser required: {browser_required_count} ({:.1}%)\n\
+             - Empty body (JS shell): {empty_body_count} ({:.1}%)\n\n\
+             Truncated by max_chars: {truncated_count} of {with_stats} responses with size data ({:.1}%)\n",
             pct(pass_count),
             pct(block_count),
             pct(warn_count),
             pct(error_count),
             pct(browser_required_count),
+            pct(empty_body_count),
+            crate::server::pct(truncated_count, with_stats),
         );
 
         if !sorted_patterns.is_empty() {
@@ -524,6 +566,7 @@ impl WebGuardServer {
         status_code: u16,
         err_msg: &str,
         challenge: &str,
+        stats: audit::FetchStats,
     ) {
         self.audit_logger.log(&audit::Entry {
             timestamp: Utc::now(),
@@ -540,6 +583,7 @@ impl WebGuardServer {
             status_code,
             error: err_msg.to_string(),
             challenge: challenge.to_string(),
+            stats,
         });
     }
 }
@@ -844,6 +888,18 @@ pub fn effective_max_chars(requested: Option<i64>) -> Option<i64> {
                 .unwrap_or(DEFAULT_MAX_CHARS),
         ),
     }
+}
+
+/// Extracted text shorter than this (chars) marks a page as an empty shell.
+pub const EMPTY_BODY_MIN_CHARS: usize = 50;
+
+/// True for a 2xx extracted-HTML response with almost no text. Raw mode and
+/// verbatim types (a tiny JSON file is still content) are exempt.
+pub fn is_empty_body(status: u16, content_type: &str, raw_mode: bool, extracted: usize) -> bool {
+    !raw_mode
+        && (200..300).contains(&status)
+        && !fetch::extract::is_verbatim_type(content_type)
+        && extracted < EMPTY_BODY_MIN_CHARS
 }
 
 /// What `apply_range` did to the text, for the audit row.
@@ -1215,5 +1271,70 @@ mod tests {
         server.reload_config(new_config, None);
 
         assert_eq!(server.config.read().unwrap().sensitivity, "high");
+    }
+
+    #[test]
+    fn test_is_empty_body() {
+        let n = EMPTY_BODY_MIN_CHARS;
+        assert!(is_empty_body(200, "text/html", false, 0));
+        assert!(is_empty_body(200, "", false, n - 1));
+        assert!(!is_empty_body(200, "text/html", false, n));
+        // Exempt: raw mode, verbatim types, non-2xx.
+        assert!(!is_empty_body(200, "text/html", true, 0));
+        assert!(!is_empty_body(200, "application/json", false, 2));
+        assert!(!is_empty_body(404, "text/html", false, 0));
+    }
+
+    #[tokio::test]
+    async fn test_report_surfaces_truncation_and_empty_shells() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        let path = path.to_str().unwrap();
+        let logger = audit::Logger::new(path, true).unwrap();
+        let row = |verdict: &str, extracted: usize, truncated: bool| audit::Entry {
+            timestamp: Utc::now(),
+            url: "https://example.com/".into(),
+            host: String::new(),
+            verdict: verdict.into(),
+            score: 0.0,
+            matches: vec![],
+            fetch_time_ms: 1.0,
+            scan_time_ms: 1.0,
+            total_time_ms: 2.0,
+            status_code: 200,
+            error: String::new(),
+            challenge: String::new(),
+            stats: audit::FetchStats {
+                content_type: "text/html".into(),
+                bytes: 1000,
+                extracted_chars: extracted,
+                truncated,
+                cap: 50_000,
+            },
+        };
+        logger.log(&row("pass", 80_000, true));
+        logger.log(&row("pass", 900, false));
+        logger.log(&row("empty-body", 3, false));
+        // Pre-0.4.6 row: no size data, must stay out of the truncation rate.
+        let mut old = row("pass", 0, false);
+        old.stats = audit::FetchStats::default();
+        logger.log(&old);
+        logger.close();
+
+        let mut config = Config::default();
+        config.audit.path = path.to_string();
+        let server = WebGuardServer::new(
+            config,
+            audit::Logger::new("", false).unwrap(),
+            "0.1.0".into(),
+            None,
+        );
+        let out = server
+            .webguard_report(Parameters(ReportParams { days: 7 }))
+            .await
+            .unwrap();
+        let text = format!("{:?}", out.content);
+        assert!(text.contains("Empty body (JS shell): 1 (25.0%)"), "{text}");
+        assert!(text.contains("Truncated by max_chars: 1 of 3"), "{text}");
     }
 }

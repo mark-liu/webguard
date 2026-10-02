@@ -41,6 +41,33 @@ pub struct Entry {
     /// without inspecting the verdict string.
     #[serde(skip_serializing_if = "String::is_empty", default)]
     pub challenge: String,
+    #[serde(flatten)]
+    pub stats: FetchStats,
+}
+
+/// Response-shape fields. Zero/false/empty values are omitted, so old log
+/// lines parse unchanged and error rows stay small.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct FetchStats {
+    /// Response Content-Type header, as sent.
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub content_type: String,
+    /// Body bytes read from the wire.
+    #[serde(skip_serializing_if = "is_zero_usize", default)]
+    pub bytes: usize,
+    /// Chars of the whole document after extraction, before slicing.
+    #[serde(skip_serializing_if = "is_zero_usize", default)]
+    pub extracted_chars: usize,
+    /// True when the returned window was cut short by `cap`.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub truncated: bool,
+    /// Effective `max_chars` for the call; omitted when unlimited (0).
+    #[serde(skip_serializing_if = "is_zero_usize", default)]
+    pub cap: usize,
+}
+
+fn is_zero_usize(v: &usize) -> bool {
+    *v == 0
 }
 
 fn is_zero(v: &u16) -> bool {
@@ -301,6 +328,7 @@ mod tests {
             status_code: 200,
             error: String::new(),
             challenge: String::new(),
+            stats: FetchStats::default(),
         };
 
         logger.log(&entry);
@@ -332,6 +360,7 @@ mod tests {
             status_code: 0,
             error: String::new(),
             challenge: String::new(),
+            stats: FetchStats::default(),
         };
         logger.log(&entry); // should not panic
     }
@@ -356,6 +385,7 @@ mod tests {
                 status_code: 200,
                 error: String::new(),
                 challenge: String::new(),
+                stats: FetchStats::default(),
             });
         }
         logger.close();
@@ -387,6 +417,7 @@ mod tests {
                     status_code: 200,
                     error: String::new(),
                     challenge: String::new(),
+                    stats: FetchStats::default(),
                 });
             }));
         }
@@ -429,6 +460,7 @@ mod tests {
             status_code: 200,
             error: String::new(),
             challenge: String::new(),
+            stats: FetchStats::default(),
         });
 
         logger.log(&Entry {
@@ -444,6 +476,7 @@ mod tests {
             status_code: 200,
             error: String::new(),
             challenge: String::new(),
+            stats: FetchStats::default(),
         });
 
         logger.log(&Entry {
@@ -459,6 +492,7 @@ mod tests {
             status_code: 0,
             error: "timeout".into(),
             challenge: String::new(),
+            stats: FetchStats::default(),
         });
         logger.close();
 
@@ -626,6 +660,7 @@ mod tests {
             status_code: 200,
             error: String::new(),
             challenge: String::new(),
+            stats: FetchStats::default(),
         });
         logger.close();
         let entries = read_entries(path.to_str().unwrap(), None).unwrap();
@@ -660,6 +695,7 @@ mod tests {
                 "request failed for url (https://evil.example/?ignore_previous_instructions=now): timeout"
                     .into(),
             challenge: String::new(),
+            stats: FetchStats::default(),
         });
         logger.close();
         let entries = read_entries(path.to_str().unwrap(), None).unwrap();
@@ -695,6 +731,7 @@ mod tests {
             status_code: 200,
             error: String::new(),
             challenge: String::new(),
+            stats: FetchStats::default(),
         });
         logger.close();
 
@@ -729,11 +766,60 @@ mod tests {
             status_code: 0,
             error: String::new(),
             challenge: String::new(),
+            stats: FetchStats::default(),
         };
 
         let json = serde_json::to_string(&entry).unwrap();
         assert!(!json.contains("matches"));
         assert!(!json.contains("status_code"));
         assert!(!json.contains("error"));
+    }
+
+    #[test]
+    fn test_fetch_stats_serialise_and_back_compat() {
+        let mut entry = Entry {
+            timestamp: Utc::now(),
+            url: "https://example.com".into(),
+            host: String::new(),
+            verdict: "pass".into(),
+            score: 0.0,
+            matches: vec![],
+            fetch_time_ms: 1.0,
+            scan_time_ms: 1.0,
+            total_time_ms: 2.0,
+            status_code: 200,
+            error: String::new(),
+            challenge: String::new(),
+            stats: FetchStats::default(),
+        };
+        // Defaults are omitted, so error rows and old readers see no new keys.
+        let json = serde_json::to_string(&entry).unwrap();
+        for key in [
+            "content_type",
+            "bytes",
+            "extracted_chars",
+            "truncated",
+            "cap",
+        ] {
+            assert!(!json.contains(key), "{key} in {json}");
+        }
+
+        entry.stats = FetchStats {
+            content_type: "text/plain".into(),
+            bytes: 10,
+            extracted_chars: 9,
+            truncated: true,
+            cap: 5,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains(r#""content_type":"text/plain""#));
+        assert!(json.contains(r#""truncated":true"#));
+        let back: Entry = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.stats, entry.stats);
+
+        // A pre-0.4.6 line without the keys still parses.
+        let old = r#"{"timestamp":"2026-01-01T00:00:00Z","url":"u","verdict":"pass","score":0.0,"fetch_time_ms":1.0,"scan_time_ms":1.0,"total_time_ms":2.0}"#;
+        let parsed: Entry = serde_json::from_str(old).unwrap();
+        assert_eq!(parsed.stats, FetchStats::default());
     }
 }
