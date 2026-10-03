@@ -268,16 +268,16 @@ impl WebGuardServer {
             Verdict::Pass
         };
 
-        // A 2xx HTML page that extracts to almost nothing is a JS shell, so
-        // "pass" must not read as "has content". Verbatim types may be tiny.
+        // A 200 HTML page that extracts to little (JS shell, stub) must not
+        // read as "has content". Verbatim types may be tiny.
         let verdict_label = if verdict == Verdict::Pass
-            && is_empty_body(
+            && is_low_content(
                 fetch_result.status_code,
                 &fetch_result.content_type,
                 raw_mode,
                 range.total,
             ) {
-            "empty-body".to_string()
+            "low-content".to_string()
         } else {
             verdict.to_string()
         };
@@ -285,7 +285,7 @@ impl WebGuardServer {
             content_type: fetch_result.content_type.clone(),
             bytes: body.len(),
             extracted_chars: range.total,
-            truncated: range.truncated && verdict != Verdict::Block,
+            truncated: range.truncated,
             cap: max_chars.filter(|m| *m > 0).map_or(0, |m| m as usize),
         };
 
@@ -441,8 +441,8 @@ impl WebGuardServer {
         let mut warn_count = 0usize;
         let mut error_count = 0usize;
         let mut browser_required_count = 0usize;
-        let mut empty_body_count = 0usize;
-        // Rows from before 0.4.6 carry no stats; keep them out of the rate.
+        let mut low_content_count = 0usize;
+        // Rows without stats fields and blocked rows stay out of the rate.
         let mut with_stats = 0usize;
         let mut truncated_count = 0usize;
         let mut pattern_hits: HashMap<String, usize> = HashMap::new();
@@ -457,11 +457,13 @@ impl WebGuardServer {
                 "warn" => warn_count += 1,
                 "error" => error_count += 1,
                 "browser-required" => browser_required_count += 1,
-                "empty-body" => empty_body_count += 1,
+                "low-content" => low_content_count += 1,
                 _ => {}
             }
 
-            if entry.stats.extracted_chars > 0 {
+            let st = &entry.stats;
+            let has_stats = st.bytes > 0 || st.extracted_chars > 0 || !st.content_type.is_empty();
+            if has_stats && entry.verdict != "block" {
                 with_stats += 1;
                 truncated_count += usize::from(entry.stats.truncated);
             }
@@ -505,14 +507,14 @@ impl WebGuardServer {
              - Warn: {warn_count} ({:.1}%)\n\
              - Error: {error_count} ({:.1}%)\n\
              - Browser required: {browser_required_count} ({:.1}%)\n\
-             - Empty body (JS shell): {empty_body_count} ({:.1}%)\n\n\
+             - Low extracted content: {low_content_count} ({:.1}%)\n\n\
              Truncated by max_chars: {truncated_count} of {with_stats} responses with size data ({:.1}%)\n",
             pct(pass_count),
             pct(block_count),
             pct(warn_count),
             pct(error_count),
             pct(browser_required_count),
-            pct(empty_body_count),
+            pct(low_content_count),
             crate::server::pct(truncated_count, with_stats),
         );
 
@@ -890,16 +892,16 @@ pub fn effective_max_chars(requested: Option<i64>) -> Option<i64> {
     }
 }
 
-/// Extracted text shorter than this (chars) marks a page as an empty shell.
-pub const EMPTY_BODY_MIN_CHARS: usize = 50;
+/// Extracted text shorter than this (chars) marks a page as low-content.
+pub const LOW_CONTENT_MIN_CHARS: usize = 50;
 
-/// True for a 2xx extracted-HTML response with almost no text. Raw mode and
-/// verbatim types (a tiny JSON file is still content) are exempt.
-pub fn is_empty_body(status: u16, content_type: &str, raw_mode: bool, extracted: usize) -> bool {
+/// True for a 200 extracted-HTML response with little text. Raw mode, verbatim
+/// types (a tiny JSON file is still content) and non-200 (204) are exempt.
+pub fn is_low_content(status: u16, content_type: &str, raw_mode: bool, extracted: usize) -> bool {
     !raw_mode
-        && (200..300).contains(&status)
+        && status == 200
         && !fetch::extract::is_verbatim_type(content_type)
-        && extracted < EMPTY_BODY_MIN_CHARS
+        && extracted < LOW_CONTENT_MIN_CHARS
 }
 
 /// What `apply_range` did to the text, for the audit row.
@@ -1274,19 +1276,20 @@ mod tests {
     }
 
     #[test]
-    fn test_is_empty_body() {
-        let n = EMPTY_BODY_MIN_CHARS;
-        assert!(is_empty_body(200, "text/html", false, 0));
-        assert!(is_empty_body(200, "", false, n - 1));
-        assert!(!is_empty_body(200, "text/html", false, n));
-        // Exempt: raw mode, verbatim types, non-2xx.
-        assert!(!is_empty_body(200, "text/html", true, 0));
-        assert!(!is_empty_body(200, "application/json", false, 2));
-        assert!(!is_empty_body(404, "text/html", false, 0));
+    fn test_is_low_content() {
+        let n = LOW_CONTENT_MIN_CHARS;
+        assert!(is_low_content(200, "text/html", false, 0));
+        assert!(is_low_content(200, "", false, n - 1));
+        assert!(!is_low_content(200, "text/html", false, n));
+        // Exempt: raw mode, verbatim types, non-200.
+        assert!(!is_low_content(200, "text/html", true, 0));
+        assert!(!is_low_content(200, "application/json", false, 2));
+        assert!(!is_low_content(404, "text/html", false, 0));
+        assert!(!is_low_content(204, "", false, 0));
     }
 
     #[tokio::test]
-    async fn test_report_surfaces_truncation_and_empty_shells() {
+    async fn test_report_surfaces_truncation_and_low_content() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("audit.jsonl");
         let path = path.to_str().unwrap();
@@ -1314,7 +1317,11 @@ mod tests {
         };
         logger.log(&row("pass", 80_000, true));
         logger.log(&row("pass", 900, false));
-        logger.log(&row("empty-body", 3, false));
+        logger.log(&row("low-content", 3, false));
+        // Zero-char response with stats counts in the denominator.
+        logger.log(&row("pass", 0, false));
+        // Blocked output is never returned, so it is not a truncation sample.
+        logger.log(&row("block", 80_000, true));
         // Pre-0.4.6 row: no size data, must stay out of the truncation rate.
         let mut old = row("pass", 0, false);
         old.stats = audit::FetchStats::default();
@@ -1334,7 +1341,7 @@ mod tests {
             .await
             .unwrap();
         let text = format!("{:?}", out.content);
-        assert!(text.contains("Empty body (JS shell): 1 (25.0%)"), "{text}");
-        assert!(text.contains("Truncated by max_chars: 1 of 3"), "{text}");
+        assert!(text.contains("Low extracted content: 1 (16.7%)"), "{text}");
+        assert!(text.contains("Truncated by max_chars: 1 of 4"), "{text}");
     }
 }
