@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 - 2026-10-03
 
 ### Changed - non-HTML bodies returned verbatim
 
@@ -16,13 +16,16 @@ bytes, and the default drops from 90000 to 50000 to fit under the client's
 tool-result wall. The whole body is scanned once per call, so every window of a
 document gets the same verdict.
 
-### Added - audit row size fields and `empty-body` verdict
+### Added - audit row size fields and `low-content` verdict
 
 Audit rows gain `content_type`, `bytes`, `extracted_chars`, `truncated` and
 `cap` (zero values omitted; `truncated` means the returned window was cut by
-`cap`). A 2xx HTML response extracting to under 50 chars logs and reports
-verdict `empty-body` (JS shell) instead of `pass`. `webguard_report` shows the
-empty-body count and the truncation rate over rows that carry size data.
+`cap`). `content_type` is reduced to the base MIME (lowercase, no parameters,
+`[a-z0-9.+-/]` only, else `invalid`) before it is written. A 200 HTML response
+extracting to under 50 chars logs and reports verdict `low-content` instead of
+`pass`; 204 and other non-200 statuses are exempt. `webguard_report` shows the
+"Low extracted content" count and the truncation rate over non-blocked rows
+that carry size data, zero-char responses included.
 
 ## 0.4.5 - 2026-08-22
 
