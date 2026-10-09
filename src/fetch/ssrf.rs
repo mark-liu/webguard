@@ -50,12 +50,18 @@ pub fn validate_url(raw: &str) -> std::result::Result<Url, String> {
     }
 
     // No userinfo
-    if !url.username().is_empty() {
+    if !url.username().is_empty() || url.password().is_some() {
         return Err("userinfo not allowed".into());
     }
 
-    // No @ in raw authority
-    if raw.contains('@') {
+    // Authority ends where the url crate ends it; backslash counts for https.
+    let raw_authority = raw.find("://").map(|i| {
+        let rest = &raw[i + 3..];
+        &rest[..rest.find(['/', '?', '#', '\\']).unwrap_or(rest.len())]
+    });
+
+    // No @ in raw authority (an @ in the path, e.g. medium.com/@user, is fine)
+    if raw_authority.is_some_and(|a| a.contains('@')) {
         return Err("@ in authority".into());
     }
 
@@ -65,15 +71,9 @@ pub fn validate_url(raw: &str) -> std::result::Result<Url, String> {
         return Err("URL-encoded hostname".into());
     }
     // Also check the raw URL — url crate normalizes percent-encoding before we see host_str
-    if let Some(auth_start) = raw.find("://") {
-        let after_scheme = &raw[auth_start + 3..];
-        // Strip optional userinfo@
-        let host_part = after_scheme.split('@').next_back().unwrap_or(after_scheme);
-        let host_end = host_part.find(['/', ':', '?']).unwrap_or(host_part.len());
-        let raw_host = &host_part[..host_end];
-        if raw_host.contains('%') {
-            return Err("URL-encoded hostname".into());
-        }
+    let raw_host = raw_authority.map(|a| &a[..a.find(':').unwrap_or(a.len())]);
+    if raw_host.is_some_and(|h| h.contains('%')) {
+        return Err("URL-encoded hostname".into());
     }
 
     // Cloud metadata hostname check
@@ -88,13 +88,8 @@ pub fn validate_url(raw: &str) -> std::result::Result<Url, String> {
     if is_octal_ip(host) {
         return Err("octal IP notation".into());
     }
-    if let Some(auth_start) = raw.find("://") {
-        let after_scheme = &raw[auth_start + 3..];
-        let host_part = after_scheme.split('@').next_back().unwrap_or(after_scheme);
-        let host_end = host_part.find(['/', ':', '?']).unwrap_or(host_part.len());
-        if is_octal_ip(&host_part[..host_end]) {
-            return Err("octal IP notation".into());
-        }
+    if raw_host.is_some_and(is_octal_ip) {
+        return Err("octal IP notation".into());
     }
 
     Ok(url)
@@ -189,6 +184,15 @@ mod tests {
 
         // Userinfo
         assert!(validate_url("https://user:pass@example.com").is_err());
+        assert!(validate_url("https://:pass@example.com").is_err());
+
+        // @ outside the authority is a path character, not userinfo
+        assert!(validate_url("https://medium.com/@user/post").is_ok());
+        assert!(validate_url("https://example.com/a?u=x@y.com").is_ok());
+        assert!(validate_url("https://example.com#@evil.com").is_ok());
+        assert!(validate_url("https://evil.com@169.254.169.254/@x").is_err());
+        assert!(validate_url("https://exam%70le.com/@x").is_err());
+        assert!(validate_url("https://0177.0.0.1/@x").is_err());
 
         // URL-encoded hostname
         assert!(validate_url("https://exam%70le.com").is_err());
