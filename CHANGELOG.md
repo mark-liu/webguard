@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Fixed - scan what the model receives
+
+Non-raw fetches scanned the full raw body, including inline `<script>` text
+that `extract_clean` removes, so `String.fromCharCode(` in a search-results
+page blocked the fetch. The scan now runs on the extracted document (before
+`offset`/`max_chars` slicing, so a range read cannot dodge it); `raw=true`
+still scans the raw body. HTML comments are dropped by extraction, so in
+non-raw mode they are no longer scanned either.
+
+### Fixed - one occurrence scored once
+
+Stage 1 deduped by offset, but the stripped and raw texts have different
+offsets, so one phrase scored twice. Matches now dedupe across texts by
+(pattern, matched text); a phrase repeated within a document still counts
+per occurrence.
+
+### Fixed - doc auto-suppression narrowed
+
+`pypi.org` and `readthedocs.io`/`.org` host publisher-controlled content and
+are no longer treated as doc sites, so `ei-*` and `enc-*` matches there are
+no longer suppressed. Doc path checks match whole segments, not substrings
+(`/project/api-foo` is not `/api`).
+
 ## 0.5.1 - 2026-10-10
 
 ### Fixed - `@` in a URL path no longer rejected
