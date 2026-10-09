@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1 - 2026-10-10
+
+### Fixed - `@` in a URL path no longer rejected
+
+The SSRF check refused any URL containing `@`, so `https://medium.com/@user/post`
+failed with "@ in authority". The check now bounds the authority at `/ ? #` or
+backslash before looking for `@`, and treats a password-only userinfo
+(`https://:pw@host`) as userinfo.
+
 ## 0.5.0 - 2026-10-03
 
 ### Changed - non-HTML bodies returned verbatim
