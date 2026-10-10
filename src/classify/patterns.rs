@@ -79,7 +79,7 @@ pub fn all_patterns() -> Vec<Pattern> {
             "instruction-override",
             High,
             R,
-            r"(?i)\bnew\s+instructions?\s*:[^\n]{0,120}?\b(?:you\s+are\s+now|from\s+now\s+on|act\s+as|pretend|highest\s+priority|(?:system|hidden)\s+prompt|(?:ignore|disregard|forget|override)\s+(?:the\s+user|all|any|every|previous|prior|earlier|above|everything|your|the\s+above|safety)|(?:do\s+not|don'?t)\s+(?:follow|obey)|reveal\b[^\n.]{0,40}\b(?:prompt|instructions?))",
+            r"(?i)\bnew\s+instructions?\s*:[^\n]{0,120}?\b(?:you\s+are\s+now\s+(?:an?\s+)?(?:different|new|unrestricted|unfiltered|uncensored|jailbroken|evil)\b|without\s+(?:any\s+)?(?:safety|restrictions?|guidelines|filters?|guardrails)\b|pretend\s+(?:to\s+be|you\s+are)\b|act\s+as\s+(?:an?\s+)?(?:unrestricted|unfiltered|uncensored|jailbroken|evil)\b|highest\s+priority|(?:system|hidden|developer)\s+(?:prompt|message|instructions?)|(?:ignore|disregard|discard|forget|override|bypass)\b[^\n.;]{0,40}?\b(?:instructions?|directions?|prompts?|guidelines|guardrails|safety|the\s+user)\b|(?:do\s+not|don'?t)\s+(?:follow|obey)\b[^\n.;]{0,40}?\b(?:instructions?|directions?|prompts?|guidelines|the\s+user)\b|(?:comply|obey)\s+only\s+with|follow\s+only\s+(?:this|these)\b|reveal\b[^\n.]{0,40}\b(?:prompt|instructions?))",
         ),
         p(
             "io-007",
