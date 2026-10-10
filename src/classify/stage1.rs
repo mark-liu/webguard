@@ -1,9 +1,10 @@
 use aho_corasick::AhoCorasick;
 use regex::Regex;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use super::patterns::{Pattern, PatternType};
-use super::preprocess::{PreprocessResult, strip_invisible};
+use super::preprocess::{PreprocessResult, demark, strip_invisible};
 use super::result::Match;
 
 pub struct CompiledPatterns {
@@ -66,14 +67,16 @@ pub fn scan_stage1(pp: &PreprocessResult, compiled: &CompiledPatterns) -> Vec<Ma
     }
 
     // Raw text preserves patterns like <<SYS>> that HTML parsing destroys.
-    // Side views are also scanned without invisible characters, which only
-    // clean_text drops; the original keeps them for the uo-* patterns.
+    // Side views also get the invisible-free and demarked passes clean_text
+    // gets; the original keeps invisibles for the uo-* patterns.
     let mut side = |text: &str, decoded: bool| {
         let visible = strip_invisible(text);
         for t in std::iter::once(text).chain(visible.as_deref()) {
-            let mut found = scan_text(t, false, compiled);
-            found.iter_mut().for_each(|m| m.from_decoded = decoded);
-            sources.push(found);
+            for v in std::iter::once(Cow::Borrowed(t)).chain(demark(t).map(Cow::Owned)) {
+                let mut found = scan_text(&v, false, compiled);
+                found.iter_mut().for_each(|m| m.from_decoded = decoded);
+                sources.push(found);
+            }
         }
     };
     if pp.raw_text != pp.clean_text {
