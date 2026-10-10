@@ -4,6 +4,13 @@ use std::sync::LazyLock;
 
 static EXCESSIVE_NEWLINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
 
+static NON_PROSE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?is)<!--.*?-->|<(script|style|noscript|svg|iframe)\b[^>]*>.*?</\s*(?:script|style|noscript|svg|iframe)\s*>",
+    )
+    .unwrap()
+});
+
 const FORBIDDEN_TAGS: &[&str] = &["script", "style", "svg", "noscript", "iframe"];
 const BOILERPLATE_TAGS: &[&str] = &["nav", "header", "footer", "aside"];
 
@@ -42,6 +49,14 @@ pub fn is_verbatim_type(content_type: &str) -> bool {
                 | "x-sh"
                 | "x-httpd-php"
         )
+}
+
+/// Raw HTML minus script/style/noscript/svg/iframe elements and comments:
+/// keeps tags and layout markup (which htmd rewrites) but drops the inline-JS
+/// text behind the fromCharCode false positives. Unclosed elements stay, so
+/// a miss errs toward scanning.
+pub fn strip_non_prose(html: &str) -> String {
+    NON_PROSE_RE.replace_all(html, " ").into_owned()
 }
 
 /// Extract content for security scanning (full content, no boilerplate removal).

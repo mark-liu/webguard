@@ -6,10 +6,18 @@
 
 Non-raw fetches scanned the full raw body, including inline `<script>` text
 that `extract_clean` removes, so `String.fromCharCode(` in a search-results
-page blocked the fetch. The scan now runs on the extracted document (before
-`offset`/`max_chars` slicing, so a range read cannot dodge it); `raw=true`
-still scans the raw body. HTML comments are dropped by extraction, so in
-non-raw mode they are no longer scanned either.
+page blocked the fetch. Non-raw fetches now run two scans and block if either
+blocks: the extracted document the model receives (before `offset`/`max_chars`
+slicing, so a range read cannot dodge it), and the raw body with script,
+style, noscript, svg, iframe elements and HTML comments removed. The second
+scan catches attacks that markdown conversion splits or hides (inline `<b>`,
+links, `<br>`, tables, lists, entity-encoded markers, a stray `<` swallowing a
+base64 blob). `raw=true` still scans the raw body unchanged. HTML comments are
+not delivered to the model, so they are scanned only with `raw=true`.
+
+### Changed - enc-003 accepts hex char codes
+
+`String.fromCharCode(0x69, 0x67, ...)` now matches alongside decimal runs.
 
 ### Fixed - one occurrence scored once
 
@@ -141,3 +149,10 @@ mv ~/.local/share/webguard-mcp/audit.jsonl{,.pre-0.4.0}
 22 unit tests in `src/audit.rs`, including end-to-end round-trip
 canaries for the URL-write path, the `host` population, and the
 error-field defang. Full suite: 122 tests, all passing.
+
+Removed from the mixed doc-host list: `pypi.org`, `readthedocs.io`,
+`readthedocs.org`, `crates.io`, `hex.pm`, `registry.terraform.io` (package
+names like `api` or `docs` collide with path-segment checks). The pure doc
+hosts (`docs.rs`, `pkg.go.dev`, `hexdocs.pm`, `javadoc.io`, `rubydoc.info`,
+and the rest of the pure list) still auto-suppress non-critical `ei-004`,
+`ei-005` and `enc-*` matches on any non-root path.

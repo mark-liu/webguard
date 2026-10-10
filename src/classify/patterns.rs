@@ -246,13 +246,13 @@ pub fn all_patterns() -> Vec<Pattern> {
         // the plain JS builtin shipped on millions of pages (amazon.com.au fired
         // it 12×). The actual obfuscation signature is a *run* of numeric char-code
         // literals decoding to a hidden string, so require 4+ comma-separated
-        // numbers. Keeps the "charcode obfuscation" payload, drops the FPs.
+        // numbers (decimal or 0x hex). Keeps the "charcode obfuscation" payload, drops the FPs.
         p(
             "enc-003",
             "encoded-injection",
             Medium,
             R,
-            r"(?i)String\.fromCharCode\s*\(\s*\d+\s*(,\s*\d+\s*){3,}",
+            r"(?i)String\.fromCharCode\s*\(\s*(?:0x[0-9a-f]+|\d+)\s*(,\s*(?:0x[0-9a-f]+|\d+)\s*){3,}",
         ),
         // delimiter-injection (3)
         p(
