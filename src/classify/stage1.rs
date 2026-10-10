@@ -149,8 +149,16 @@ fn scan_text(text: &str, from_decoded: bool, compiled: &CompiledPatterns) -> Vec
 
 type MatchKey = (String, String, bool);
 
+/// Markup is dropped from the key: the demarked view sees `base64decode`
+/// where the clean view sees `base64_decode`, and that is one occurrence.
 fn match_key(m: &Match) -> MatchKey {
-    (m.pattern_id.clone(), m.text.to_lowercase(), m.from_decoded)
+    let text = m
+        .text
+        .chars()
+        .filter(|c| !matches!(c, '*' | '_' | '~' | '`' | '\\' | '[' | ']' | '!'))
+        .flat_map(char::to_lowercase)
+        .collect();
+    (m.pattern_id.clone(), text, m.from_decoded)
 }
 
 /// Merge per-source matches so one occurrence seen via several views counts
