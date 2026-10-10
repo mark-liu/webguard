@@ -23,7 +23,7 @@ Attempts to override, reset, or replace prior instructions.
 | io-003 | critical | literal | `disregard previous instructions` |
 | io-004 | high | literal | `forget your instructions` |
 | io-005 | high | literal | `from now on you will` |
-| io-006 | high | literal | `new instructions:` |
+| io-006 | high | regex | `(?i)\bnew\s+instructions?\s*:\s*(?:you\b\|your\b\|ignore\b\|disregard\b\|forget\b\|from\s+now\s+on\b\|act\s+as\b\|pretend\b\|reveal\b\|override\b)` |
 | io-007 | critical | regex | `(?i)ignore\s+(any\|all\|every)\s+(prior\|previous\|earlier)\s+(instructions?\|prompts?\|rules?)` |
 
 ## prompt-marker (6 patterns)

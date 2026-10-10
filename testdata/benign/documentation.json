@@ -16,5 +16,7 @@
   {"content": "To get started, visit https://dashboard.example.com/signup and create your free account.", "description": "CTA visit URL (Slack-shared landing page) - should not trigger ei-004"},
   {"content": "Open https://localhost:3000 in your browser to view the running application.", "description": "dev docs open localhost URL - should not trigger ei-004"},
   {"content": "The client will fetch https://api.github.com/repos/owner/name and parse the JSON response.", "description": "API docs fetch+parse response - should not trigger ei-004"},
-  {"content": "You can load https://cdn.jsdelivr.net/npm/chart.js directly from the CDN in a script tag.", "description": "CDN load URL in docs - should not trigger ei-004"}
+  {"content": "You can load https://cdn.jsdelivr.net/npm/chart.js directly from the CDN in a script tag.", "description": "CDN load URL in docs - should not trigger ei-004"},
+  {"content": "New instructions: run cargo test before opening a PR, then update the changelog.", "description": "docs label new instructions colon - should not trigger io-006"},
+  {"content": "**New instructions:** install the CLI with brew, then restart your shell.", "description": "bold docs label new instructions colon - should not trigger io-006"}
 ]
