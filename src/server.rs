@@ -259,9 +259,10 @@ impl WebGuardServer {
         // Window after the scan so a range read cannot dodge it
         let range = apply_range(&mut output_content, offset, max_chars);
 
-        // Determine final verdict
+        // Determine final verdict. Warn mode delivers flagged content, but a
+        // parse-budget trip was never scanned, so it always blocks.
         let verdict = if result.verdict == Verdict::Block {
-            if config.is_warn_mode() {
+            if config.is_warn_mode() && !budget_tripped(&result) {
                 Verdict::Warn
             } else {
                 Verdict::Block
@@ -941,11 +942,7 @@ fn classify_views(
             suppress_categories: suppress.clone(),
         },
     );
-    let budget_tripped = first
-        .matches
-        .iter()
-        .any(|m| m.pattern_id == classify::result::PARSE_BUDGET_ID);
-    if raw_mode || budget_tripped || fetch::extract::is_verbatim_type(content_type) {
+    if raw_mode || budget_tripped(&first) || fetch::extract::is_verbatim_type(content_type) {
         return first;
     }
     let Ok(stripped) = fetch::extract::strip_non_prose(&String::from_utf8_lossy(body)) else {
@@ -958,6 +955,13 @@ fn classify_views(
         },
     );
     merge_results(first, second)
+}
+
+fn budget_tripped(result: &classify::result::Result) -> bool {
+    result
+        .matches
+        .iter()
+        .any(|m| m.pattern_id == classify::result::PARSE_BUDGET_ID)
 }
 
 /// Block wins; matches are unioned by (pattern, text) and the higher score kept.
