@@ -218,6 +218,7 @@ cgnat_host_suffixes:
 ```
 
 - Matches on a dot boundary: `example-tailnet.ts.net` matches `box.example-tailnet.ts.net`, never `evil-example-tailnet.ts.net`.
+- Entries need at least three labels: list your full tailnet name, never `ts.net` alone, or any tailnet's names would be reachable.
 - Lifts `100.64.0.0/10` only. Loopback, link-local, RFC 1918, unique-local IPv6, cloud metadata IPs (including `100.100.100.200`) stay blocked.
 - Never applies to IP literals in the URL.
 - Checked on the IP actually connected to, on the initial request and on every redirect hop; the connection stays pinned to the validated IP.

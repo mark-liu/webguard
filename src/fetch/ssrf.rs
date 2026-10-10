@@ -98,8 +98,9 @@ pub fn validate_url(raw: &str) -> std::result::Result<Url, String> {
 }
 
 /// Dot-boundary suffix match. Entries are lowercased and stripped of a leading
-/// `*.`/`.` and trailing `.`; empty entries match nothing. `ts.net` matches
-/// `a.ts.net` and `ts.net`, never `evil-ts.net`. IP literals never match.
+/// `*.`/`.` and trailing `.`; entries under three labels match nothing, so a
+/// shared provider domain cannot unlock every tenant's names. `t.ts.net`
+/// matches `a.t.ts.net`, never `evil-t.ts.net`. IP literals never match.
 pub fn host_matches_suffix(host: &str, suffixes: &[String]) -> bool {
     let host = host.trim_end_matches('.').to_ascii_lowercase();
     if host.parse::<IpAddr>().is_ok() || host.starts_with('[') {
@@ -109,7 +110,7 @@ pub fn host_matches_suffix(host: &str, suffixes: &[String]) -> bool {
         let s = raw.trim().to_ascii_lowercase();
         let s = s.strip_prefix("*.").unwrap_or(&s);
         let s = s.trim_start_matches('.').trim_end_matches('.');
-        !s.is_empty()
+        s.split('.').filter(|l| !l.is_empty()).count() >= 3
             && host
                 .strip_suffix(s)
                 .is_some_and(|rest| rest.is_empty() || rest.ends_with('.'))
@@ -324,15 +325,15 @@ mod tests {
         assert!(host_matches_suffix("example-tailnet.ts.net", &s));
         assert!(!host_matches_suffix("evil-example-tailnet.ts.net", &s));
         assert!(!host_matches_suffix("example-tailnet.ts.net.evil.com", &s));
-        let s = sfx(&["ts.net"]);
-        assert!(!host_matches_suffix("evil-ts.net", &s));
-        assert!(host_matches_suffix("x.ts.net", &s));
+        for bare in ["ts.net", "*.ts.net", "net"] {
+            assert!(!host_matches_suffix("x.ts.net", &sfx(&[bare])), "{bare}");
+        }
     }
 
     #[test]
     fn test_host_matches_suffix_entry_forms_and_empties() {
-        for entry in ["*.ts.net", ".ts.net", "TS.NET.", " ts.net "] {
-            assert!(host_matches_suffix("x.ts.net", &sfx(&[entry])), "{entry}");
+        for entry in ["*.t.ts.net", ".t.ts.net", "T.TS.NET.", " t.ts.net "] {
+            assert!(host_matches_suffix("x.t.ts.net", &sfx(&[entry])), "{entry}");
         }
         for entry in ["", ".", "*.", " "] {
             assert!(

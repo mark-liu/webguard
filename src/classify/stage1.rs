@@ -81,22 +81,26 @@ pub fn scan_stage1(pp: &PreprocessResult, compiled: &CompiledPatterns) -> Vec<Ma
     merge_sources(sources)
 }
 
-/// Lowercased text plus, for non-ASCII input, a map from each byte of it back
-/// to its source char: some chars (U+0130) change byte length when lowercased.
-fn lower_with_map(text: &str) -> (String, Option<Vec<usize>>) {
+/// Per lowercased byte: start and end of the source char it came from.
+type SourceSpans = (Vec<usize>, Vec<usize>);
+
+/// Lowercased text plus, for non-ASCII input, the source char start and end
+/// for each of its bytes: U+0130 lowercases to two chars.
+fn lower_with_map(text: &str) -> (String, Option<SourceSpans>) {
     if text.is_ascii() {
         return (text.to_ascii_lowercase(), None);
     }
     let mut lower = String::with_capacity(text.len());
-    let mut map = Vec::with_capacity(text.len() + 1);
+    let mut starts = Vec::with_capacity(text.len());
+    let mut ends = Vec::with_capacity(text.len());
     for (i, c) in text.char_indices() {
         for lc in c.to_lowercase() {
             lower.push(lc);
-            map.extend(std::iter::repeat_n(i, lc.len_utf8()));
+            starts.extend(std::iter::repeat_n(i, lc.len_utf8()));
+            ends.extend(std::iter::repeat_n(i + c.len_utf8(), lc.len_utf8()));
         }
     }
-    map.push(text.len());
-    (lower, Some(map))
+    (lower, Some((starts, ends)))
 }
 
 fn scan_text(text: &str, from_decoded: bool, compiled: &CompiledPatterns) -> Vec<Match> {
@@ -108,7 +112,7 @@ fn scan_text(text: &str, from_decoded: bool, compiled: &CompiledPatterns) -> Vec
         let pat_idx = compiled.literal_index[m.pattern().as_usize()];
         let pat = &compiled.all_definitions[pat_idx];
         let (start, end) = match &to_src {
-            Some(map) => (map[m.start()], map[m.end()]),
+            Some((starts, ends)) => (starts[m.start()], ends[m.end() - 1]),
             None => (m.start(), m.end()),
         };
         matches.push(Match {
@@ -196,6 +200,16 @@ mod tests {
         assert_eq!(&text[m.offset..m.offset + m.text.len()], m.text);
         let pp = preprocess(&text);
         assert!(!scan_stage1(&pp, &compiled()).is_empty());
+    }
+
+    #[test]
+    fn test_match_ending_inside_expansion_keeps_source_char() {
+        let text = "xx abc\u{130} yy";
+        let (lower, map) = lower_with_map(text);
+        let (starts, ends) = map.unwrap();
+        let start = lower.find("abci").unwrap();
+        let end = start + "abci".len();
+        assert_eq!(&text[starts[start]..ends[end - 1]], "abc\u{130}");
     }
 
     #[test]
