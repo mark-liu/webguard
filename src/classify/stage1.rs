@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use super::patterns::{Pattern, PatternType};
-use super::preprocess::{PreprocessResult, demark, strip_invisible};
+use super::preprocess::{PreprocessResult, demark, extract_html_comments, strip_invisible};
 use super::result::Match;
 
 pub struct CompiledPatterns {
@@ -87,6 +87,9 @@ pub fn scan_stage1(pp: &PreprocessResult, compiled: &CompiledPatterns) -> Vec<Ma
     }
     for blob in &pp.decoded_blobs {
         side(&blob.decoded, true);
+        for comment in extract_html_comments(&blob.decoded) {
+            side(&comment, true);
+        }
     }
 
     merge_sources(sources)
