@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::path::Path;
 
 use super::patterns::{Pattern, PatternType};
-use super::result::Severity;
+use super::result::{PARSE_BUDGET_ID, Severity};
 
 #[derive(Debug, Deserialize)]
 struct ExternalPatternFile {
@@ -40,6 +40,16 @@ pub fn load_external_patterns(dir: &Path) -> std::io::Result<Option<Vec<Pattern>
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
 
         for ep in file.patterns {
+            // The server keys its warn-mode override on this id
+            if ep.id == PARSE_BUDGET_ID {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "{}: pattern id '{PARSE_BUDGET_ID}' is reserved",
+                        path.display()
+                    ),
+                ));
+            }
             found_any = true;
             patterns.push(Pattern {
                 id: ep.id,
@@ -82,6 +92,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let result = load_external_patterns(dir.path()).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_reserved_parse_budget_id_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("x.yaml"),
+            "patterns:\n  - id: parse-budget\n    category: x\n    severity: low\n    type: literal\n    value: hello\n",
+        )
+        .unwrap();
+        let err = load_external_patterns(dir.path()).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     }
 
     #[test]
