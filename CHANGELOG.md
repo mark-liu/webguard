@@ -7,9 +7,11 @@
 io-006 matched the bare label `new instructions:`, so a page saying
 `**New instructions:** run tests` was blocked outright (one high match
 crosses the default threshold). It now needs an override cue after the
-colon (`you`, `your`, `ignore`, `disregard`, `forget`, `from now on`,
-`act as`, `pretend`, `reveal`, `override`), and also catches the singular
-`new instruction:`.
+colon, anywhere later on the same line: `you are now`, `from now on`,
+`act as`, `pretend`, `highest priority`, `system prompt`, `hidden prompt`,
+`ignore`/`disregard`/`forget`/`override` aimed at the user, prior or all
+instructions, `do not follow`, or `reveal` followed by prompt or
+instructions. It also catches the singular `new instruction:`.
 
 ### Fixed - deeply nested pages no longer crash webguard
 

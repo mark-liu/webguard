@@ -73,13 +73,13 @@ pub fn all_patterns() -> Vec<Pattern> {
             L,
             "from now on you will",
         ),
-        // Bare "new instructions:" is a common docs label; require an override cue after it.
+        // Bare "new instructions:" is a common docs label; require an override cue later on the line.
         p(
             "io-006",
             "instruction-override",
             High,
             R,
-            r"(?i)\bnew\s+instructions?\s*:\s*(?:you\b|your\b|ignore\b|disregard\b|forget\b|from\s+now\s+on\b|act\s+as\b|pretend\b|reveal\b|override\b)",
+            r"(?i)\bnew\s+instructions?\s*:[^\n]{0,120}?\b(?:you\s+are\s+now|from\s+now\s+on|act\s+as|pretend|highest\s+priority|(?:system|hidden)\s+prompt|(?:ignore|disregard|forget|override)\s+(?:the\s+user|all|any|every|previous|prior|earlier|above|everything|your|the\s+above|safety)|(?:do\s+not|don'?t)\s+(?:follow|obey)|reveal\b[^\n.]{0,40}\b(?:prompt|instructions?))",
         ),
         p(
             "io-007",

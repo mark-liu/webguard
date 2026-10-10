@@ -23,7 +23,7 @@ Attempts to override, reset, or replace prior instructions.
 | io-003 | critical | literal | `disregard previous instructions` |
 | io-004 | high | literal | `forget your instructions` |
 | io-005 | high | literal | `from now on you will` |
-| io-006 | high | regex | `(?i)\bnew\s+instructions?\s*:\s*(?:you\b\|your\b\|ignore\b\|disregard\b\|forget\b\|from\s+now\s+on\b\|act\s+as\b\|pretend\b\|reveal\b\|override\b)` |
+| io-006 | high | regex | `(?i)\bnew\s+instructions?\s*:[^\n]{0,120}?\b(?:you\s+are\s+now\|from\s+now\s+on\|act\s+as\|pretend\|highest\s+priority\|(?:system\|hidden)\s+prompt\|(?:ignore\|disregard\|forget\|override)\s+(?:the\s+user\|all\|any\|every\|previous\|prior\|earlier\|above\|everything\|your\|the\s+above\|safety)\|(?:do\s+not\|don'?t)\s+(?:follow\|obey)\|reveal\b[^\n.]{0,40}\b(?:prompt\|instructions?))` |
 | io-007 | critical | regex | `(?i)ignore\s+(any\|all\|every)\s+(prior\|previous\|earlier)\s+(instructions?\|prompts?\|rules?)` |
 
 ## prompt-marker (6 patterns)
