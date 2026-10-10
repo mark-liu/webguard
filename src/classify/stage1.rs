@@ -81,20 +81,42 @@ pub fn scan_stage1(pp: &PreprocessResult, compiled: &CompiledPatterns) -> Vec<Ma
     merge_sources(sources)
 }
 
+/// Lowercased text plus, for non-ASCII input, a map from each byte of it back
+/// to its source char: some chars (U+0130) change byte length when lowercased.
+fn lower_with_map(text: &str) -> (String, Option<Vec<usize>>) {
+    if text.is_ascii() {
+        return (text.to_ascii_lowercase(), None);
+    }
+    let mut lower = String::with_capacity(text.len());
+    let mut map = Vec::with_capacity(text.len() + 1);
+    for (i, c) in text.char_indices() {
+        for lc in c.to_lowercase() {
+            lower.push(lc);
+            map.extend(std::iter::repeat_n(i, lc.len_utf8()));
+        }
+    }
+    map.push(text.len());
+    (lower, Some(map))
+}
+
 fn scan_text(text: &str, from_decoded: bool, compiled: &CompiledPatterns) -> Vec<Match> {
     let mut matches = Vec::new();
-    let lower = text.to_lowercase();
+    let (lower, to_src) = lower_with_map(text);
 
     // Aho-Corasick literal matching
     for m in compiled.automaton.find_iter(&lower) {
         let pat_idx = compiled.literal_index[m.pattern().as_usize()];
         let pat = &compiled.all_definitions[pat_idx];
+        let (start, end) = match &to_src {
+            Some(map) => (map[m.start()], map[m.end()]),
+            None => (m.start(), m.end()),
+        };
         matches.push(Match {
             pattern_id: pat.id.clone(),
             category: pat.category.clone(),
             severity: pat.severity,
-            text: text[m.start()..m.end()].to_string(),
-            offset: m.start(),
+            text: text[start..end].to_string(),
+            offset: start,
             from_decoded,
         });
     }
@@ -162,6 +184,18 @@ mod tests {
 
     fn compiled() -> CompiledPatterns {
         CompiledPatterns::new(all_patterns())
+    }
+
+    #[test]
+    fn test_length_changing_lowercase_does_not_panic() {
+        // U+0130 lowercases to two chars, which shifted every later offset.
+        let text = format!("{} Ignore Previous Instructions now", "İ".repeat(40));
+        let matches = scan_text(&text, false, &compiled());
+        let m = matches.iter().find(|m| m.pattern_id == "io-001").unwrap();
+        assert_eq!(m.text, "Ignore Previous Instructions");
+        assert_eq!(&text[m.offset..m.offset + m.text.len()], m.text);
+        let pp = preprocess(&text);
+        assert!(!scan_stage1(&pp, &compiled()).is_empty());
     }
 
     #[test]

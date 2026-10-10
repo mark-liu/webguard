@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed - panic on length-changing lowercase
+
+Literal matching sliced the original text with offsets from its lowercased
+copy, so a page with `İ` (U+0130) before a matched phrase panicked the scan.
+Offsets now map back through the lowercase per byte.
+
 ### Changed - marker families never block alone
 
 `prompt-marker` and `delimiter-injection` hits (pm-*, di-*) no longer produce a
