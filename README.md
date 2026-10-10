@@ -124,6 +124,14 @@ Two-stage cascade — fast pattern match, then heuristic scoring only when neede
 
 See [PATTERNS.md](PATTERNS.md) for the full pattern list with examples and regex definitions.
 
+### Marker families never block alone
+
+`prompt-marker` and `delimiter-injection` hits (chat-template tokens, `[INST]`, `<<SYS>>`, role JSON) are routine in LLM source code, model cards and API docs. A page whose only hits are in these two families passes (the matches still appear in the audit log); a block needs at least one hit from another family, which then goes through the normal critical/scoring path.
+
+### Unicode folding
+
+Before matching, text is folded so look-alike forms of a phrase match the plain one: Unicode space separators (NBSP, en/em spaces, ideographic space, etc.) become ASCII space, soft hyphens are removed, and NFKC maps fullwidth letters and compatibility forms to ASCII. Cyrillic and other cross-script confusables are not handled.
+
 ### Category Suppression
 
 Suppress specific pattern categories per domain to eliminate false positives:
@@ -159,7 +167,7 @@ Only runs when Stage 1 finds non-critical matches. Factors:
 
 All checks before any TCP connection:
 
-- Private IP ranges (RFC 1918, loopback, link-local, carrier-grade NAT)
+- Private IP ranges (RFC 1918, loopback, link-local, carrier-grade NAT; see `cgnat_host_suffixes` below for the one opt-in exception)
 - Cloud metadata (AWS, GCP, Azure, Alibaba, Oracle, ECS)
 - Octal IP detection (`0177.0.0.01`)
 - URL-encoded hostname rejection
@@ -191,10 +199,29 @@ domains:
 allowlist: []
 blocklist: ["*.evil.com"]
 
+# Hostname suffixes allowed to resolve into 100.64.0.0/10 (default: none)
+cgnat_host_suffixes: []
+#  - example-tailnet.ts.net
+
 audit:
   enabled: true
   path: ""  # default: ~/.local/share/webguard-mcp/audit.jsonl
 ```
+
+### `cgnat_host_suffixes`
+
+Carrier-grade NAT (`100.64.0.0/10`) is blocked by default. Overlay networks such as Tailscale resolve their hostnames into that range, so a host whose name ends in a listed suffix may resolve there:
+
+```yaml
+cgnat_host_suffixes:
+  - example-tailnet.ts.net
+```
+
+- Matches on a dot boundary: `example-tailnet.ts.net` matches `box.example-tailnet.ts.net`, never `evil-example-tailnet.ts.net`.
+- Lifts `100.64.0.0/10` only. Loopback, link-local, RFC 1918, unique-local IPv6, cloud metadata IPs (including `100.100.100.200`) stay blocked.
+- Never applies to IP literals in the URL.
+- Checked on the IP actually connected to, on the initial request and on every redirect hop; the connection stays pinned to the validated IP.
+- All resolved addresses must pass, so a matching name that also returns a blocked address (for example an IPv6 unique-local record) is still refused.
 
 Environment: `WEBGUARD_DEFAULT_MAX_CHARS` overrides the 50000-char response cap applied when a caller omits `max_chars` (a 25k-token MCP result is spilled to a file by the client and never reaches the model as text).
 

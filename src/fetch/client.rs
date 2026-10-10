@@ -83,6 +83,8 @@ pub struct FetchOptions {
     pub max_body_size: i64,
     pub timeout: Duration,
     pub headers: HashMap<String, String>,
+    /// Hostname suffixes allowed to resolve into 100.64.0.0/10 (and nothing else).
+    pub cgnat_host_suffixes: Vec<String>,
 }
 
 impl Default for FetchOptions {
@@ -91,6 +93,7 @@ impl Default for FetchOptions {
             max_body_size: DEFAULT_MAX_BODY_SIZE,
             timeout: DEFAULT_TIMEOUT,
             headers: HashMap::new(),
+            cgnat_host_suffixes: Vec::new(),
         }
     }
 }
@@ -154,7 +157,7 @@ pub async fn fetch(raw_url: &str, opts: &FetchOptions) -> std::result::Result<Fe
     let mut current_port = url.port_or_known_default().unwrap_or(443);
 
     // Resolve DNS and validate all IPs against SSRF rules (async)
-    let mut current_ip = resolve_and_validate(&current_host).await?;
+    let mut current_ip = resolve_and_validate(&current_host, &opts.cgnat_host_suffixes).await?;
 
     let mut headers = DEFAULT_HEADERS.clone();
     apply_header_overrides(&mut headers, &opts.headers);
@@ -201,7 +204,8 @@ pub async fn fetch(raw_url: &str, opts: &FetchOptions) -> std::result::Result<Fe
                 .host_str()
                 .ok_or("no host in redirect")?
                 .to_string();
-            let redirect_ip = resolve_and_validate(&redirect_host).await?;
+            let redirect_ip =
+                resolve_and_validate(&redirect_host, &opts.cgnat_host_suffixes).await?;
             let redirect_port = next_url.port_or_known_default().unwrap_or(443);
 
             // Same-endpoint fast path: reuse the existing client. This
@@ -296,6 +300,7 @@ pub async fn fetch_with_retry(
                 max_body_size: opts.max_body_size,
                 timeout: opts.timeout * 2,
                 headers: opts.headers.clone(),
+                cgnat_host_suffixes: opts.cgnat_host_suffixes.clone(),
             };
             fetch(raw_url, &retry_opts).await
         }

@@ -88,7 +88,7 @@ pub fn all_patterns() -> Vec<Pattern> {
             r"(?i)ignore\s+(any|all|every)\s+(prior|previous|earlier)\s+(instructions?|prompts?|rules?)",
         ),
         // prompt-marker (6)
-        p("pm-001", "prompt-marker", Critical, L, "<|im_start|>system"),
+        p("pm-001", "prompt-marker", High, L, "<|im_start|>system"),
         p("pm-002", "prompt-marker", High, L, "<|im_start|>"),
         p("pm-003", "prompt-marker", High, L, "[system]:"),
         p("pm-004", "prompt-marker", High, L, "[inst]"),

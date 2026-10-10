@@ -28,11 +28,11 @@ Attempts to override, reset, or replace prior instructions.
 
 ## prompt-marker (6 patterns)
 
-Fake system/instruction delimiters and chat template markers.
+Fake system/instruction delimiters and chat template markers. This family and `delimiter-injection` never block on their own; a block needs a hit from another family.
 
 | ID | Severity | Type | Pattern |
 |----|----------|------|---------|
-| pm-001 | critical | literal | `<\|im_start\|>system` |
+| pm-001 | high | literal | `<\|im_start\|>system` |
 | pm-002 | high | literal | `<\|im_start\|>` |
 | pm-003 | high | literal | `[system]:` |
 | pm-004 | high | literal | `[inst]` |
@@ -99,7 +99,7 @@ Payloads obfuscated via encoding functions.
 
 ## delimiter-injection (3 patterns)
 
-Fake prompt boundaries and role injections.
+Fake prompt boundaries and role injections. Never blocks on its own (see prompt-marker).
 
 | ID | Severity | Type | Pattern |
 |----|----------|------|---------|

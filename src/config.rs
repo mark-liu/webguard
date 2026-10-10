@@ -58,6 +58,10 @@ pub struct Config {
     pub blocklist: Vec<String>,
     #[serde(default)]
     pub audit: AuditConfig,
+    /// Hostname suffixes (dot-boundary match) allowed to resolve into
+    /// 100.64.0.0/10. Lifts no other SSRF rule and never applies to IP literals.
+    #[serde(default)]
+    pub cgnat_host_suffixes: Vec<String>,
 }
 
 fn default_sensitivity() -> String {
@@ -150,6 +154,7 @@ impl Default for Config {
             allowlist: Vec::new(),
             blocklist: Vec::new(),
             audit: AuditConfig::default(),
+            cgnat_host_suffixes: Vec::new(),
         }
     }
 }
@@ -285,6 +290,16 @@ mod tests {
         assert!(cfg.audit.enabled);
         assert!(cfg.mode.is_empty());
         assert!(cfg.patterns_dir.is_empty());
+        assert!(cfg.cgnat_host_suffixes.is_empty());
+    }
+
+    #[test]
+    fn test_load_cgnat_host_suffixes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        fs::write(&path, "cgnat_host_suffixes:\n  - example-tailnet.ts.net\n").unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert_eq!(cfg.cgnat_host_suffixes, vec!["example-tailnet.ts.net"]);
     }
 
     #[test]

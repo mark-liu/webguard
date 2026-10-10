@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::borrow::Cow;
 use std::sync::LazyLock;
 use unicode_normalization::UnicodeNormalization;
 
@@ -14,6 +15,31 @@ const ZERO_WIDTH_CHARS: &[char] = &[
     '\u{FEFF}', // byte order mark
 ];
 
+/// Unicode space separators (category Zs) that NFKC leaves alone (U+1680) or
+/// maps inconsistently; all become ASCII space so literal phrases still match.
+fn is_unicode_space(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00A0}' | '\u{1680}' | '\u{2000}'..='\u{200A}' | '\u{202F}' | '\u{205F}' | '\u{3000}'
+    )
+}
+
+/// Fold look-alike forms so literal matching sees plain text: Unicode spaces
+/// to ASCII space, soft hyphen removed, then NFKC (fullwidth letters, ligatures).
+/// ASCII input is returned as-is. Offsets are only ever compared within one
+/// folded text, never mapped back to the original, so length changes are safe.
+pub fn fold_unicode(s: &str) -> Cow<'_, str> {
+    if s.is_ascii() {
+        return Cow::Borrowed(s);
+    }
+    let pre = s.chars().filter_map(|c| match c {
+        '\u{00AD}' => None,
+        c if is_unicode_space(c) => Some(' '),
+        c => Some(c),
+    });
+    Cow::Owned(pre.nfkc().collect())
+}
+
 #[derive(Debug, Clone)]
 pub struct PreprocessResult {
     pub clean_text: String,
@@ -25,10 +51,10 @@ pub struct PreprocessResult {
 
 pub fn preprocess(raw: &str) -> PreprocessResult {
     // Step 1: Preserve raw text (patterns like <<SYS>> destroyed by HTML parser)
-    let raw_text = raw.to_string();
+    let raw_text = fold_unicode(raw).into_owned();
 
     // Step 2: Extract HTML comments
-    let html_comments = extract_html_comments(raw);
+    let html_comments = extract_html_comments(&raw_text);
 
     // Step 3: Strip HTML tags
     let text = strip_html_tags(raw);
@@ -37,7 +63,12 @@ pub fn preprocess(raw: &str) -> PreprocessResult {
     let text = htmlescape::decode_html(&text).unwrap_or(text);
 
     // Step 5: Detect base64 blobs
-    let decoded_blobs = detect_base64(&text);
+    let mut decoded_blobs = detect_base64(&text);
+    for blob in &mut decoded_blobs {
+        if let Cow::Owned(folded) = fold_unicode(&blob.decoded) {
+            blob.decoded = folded;
+        }
+    }
 
     // Step 6: URL-decode
     let text = decode_url_encoded(&text);
@@ -45,8 +76,8 @@ pub fn preprocess(raw: &str) -> PreprocessResult {
     // Step 6b: Hex-decode (\xNN sequences)
     let text = decode_hex_sequences(&text);
 
-    // Step 7: Unicode NFC normalisation
-    let text: String = text.nfc().collect();
+    // Step 7: Unicode folding (spaces, soft hyphen, NFKC)
+    let text = fold_unicode(&text);
 
     // Step 8: Count and strip zero-width chars
     let zero_width_count = count_zero_width(&text);
@@ -192,6 +223,32 @@ mod tests {
         let ascii = "hello";
         let result: String = ascii.nfc().collect();
         assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_fold_unicode() {
+        // ASCII is borrowed untouched
+        assert!(matches!(fold_unicode("plain text"), Cow::Borrowed(_)));
+        // Spaces
+        for sp in [
+            '\u{00A0}', '\u{1680}', '\u{2000}', '\u{200A}', '\u{202F}', '\u{205F}', '\u{3000}',
+        ] {
+            assert_eq!(
+                fold_unicode(&format!("a{sp}b")),
+                "a b",
+                "U+{:04X}",
+                sp as u32
+            );
+        }
+        // Soft hyphen removed
+        assert_eq!(fold_unicode("ig\u{00AD}nore"), "ignore");
+        // Fullwidth folds to ASCII
+        assert_eq!(
+            fold_unicode("\u{FF49}\u{FF47}\u{FF4E}\u{FF4F}\u{FF52}\u{FF45}"),
+            "ignore"
+        );
+        // NFC composition kept
+        assert_eq!(fold_unicode("cafe\u{0301}"), "caf\u{e9}");
     }
 
     #[test]

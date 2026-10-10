@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Changed - marker families never block alone
+
+`prompt-marker` and `delimiter-injection` hits (pm-*, di-*) no longer produce a
+block by themselves: a page whose only matches are in those two families
+passes, with the matches still logged. A block needs at least one match from
+another family, then follows the existing critical/scoring path. This stops
+false blocks on LLM source code, model cards and API docs that quote chat
+templates. pm-001 (`<|im_start|>system`) drops from critical to high.
+
+### Added - `cgnat_host_suffixes`
+
+New config list of hostname suffixes (dot-boundary match) that may resolve into
+`100.64.0.0/10`, for overlay networks such as `example-tailnet.ts.net`. It
+lifts that one range only: loopback, link-local, RFC 1918, unique-local IPv6
+and cloud metadata IPs (including `100.100.100.200`) stay blocked, and IP
+literals in the URL never qualify. The check runs on the IP actually connected
+to, on the first request and every redirect hop. Default empty.
+
+### Fixed - Unicode folding before matching
+
+NBSP and other Unicode space separators now fold to ASCII space, soft hyphens
+are removed, and NFKC folds fullwidth letters, so `ignore&nbsp;previous&nbsp;instructions`,
+`ig\u00ADnore previous instructions` and fullwidth text no longer slip past
+literal patterns. Applies to the extracted text, the raw body, HTML comments
+and decoded blobs. Cyrillic confusables are not handled.
+
 ## 0.5.2 - 2026-10-10
 
 ### Fixed - scan what the model receives
