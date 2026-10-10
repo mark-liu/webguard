@@ -121,7 +121,35 @@ fn prune(html: &str, tags: &[&str]) -> String {
             node.detach();
         }
     }
+    flatten_deep(&mut doc);
     doc.html()
+}
+
+/// Chromium's parser depth cap. htmd recurses per element and aborts the whole
+/// process (stack overflow, uncatchable) near 5000 levels on a 2 MiB thread.
+const MAX_DEPTH: usize = 512;
+
+/// Unwrap every element nested deeper than MAX_DEPTH: its children move up in
+/// place, so all text survives for scanning and only the excess tags go.
+fn flatten_deep(doc: &mut Html) {
+    let mut deep = Vec::new();
+    let mut stack = vec![(doc.tree.root(), 0usize)];
+    while let Some((node, depth)) = stack.pop() {
+        if depth > MAX_DEPTH && node.value().is_element() {
+            deep.push(node.id());
+        }
+        // Reversed so the pop order stays pre-order: parents unwrap before children.
+        let kids: Vec<_> = node.children().collect();
+        stack.extend(kids.into_iter().rev().map(|c| (c, depth + 1)));
+    }
+    for id in deep {
+        let kids: Vec<_> = doc.tree.get(id).unwrap().children().map(|c| c.id()).collect();
+        let mut node = doc.tree.get_mut(id).unwrap();
+        for kid in kids {
+            node.insert_id_before(kid);
+        }
+        node.detach();
+    }
 }
 
 #[cfg(test)]
@@ -163,6 +191,43 @@ mod tests {
         let html = b"<p>one</p>\n\n\n\n\n<p>two</p>";
         let result = extract(html, "text/html").unwrap();
         assert!(!result.contains("\n\n\n"));
+    }
+
+    #[test]
+    fn test_deep_nesting_flattened() {
+        // 2 MiB matches a tokio worker; 5000 levels aborted the process before the cap.
+        let run = |tag: &'static str| {
+            std::thread::Builder::new()
+                .stack_size(2 << 20)
+                .spawn(move || {
+                    let html = format!(
+                        "{}deep text{}",
+                        format!("<{tag}>").repeat(20_000),
+                        format!("</{tag}>").repeat(20_000)
+                    );
+                    let full = extract(html.as_bytes(), "text/html").unwrap();
+                    let clean = extract_clean(html.as_bytes(), "text/html").unwrap();
+                    let stripped = strip_non_prose(&html);
+                    (full, clean, stripped)
+                })
+                .unwrap()
+                .join()
+                .unwrap()
+        };
+        for tag in ["div", "span", "blockquote"] {
+            let (full, clean, stripped) = run(tag);
+            assert!(full.contains("deep text"), "{tag}");
+            assert!(clean.contains("deep text"), "{tag}");
+            assert!(stripped.contains("deep text"), "{tag}");
+            let opens = stripped.matches(&format!("<{tag}>")).count();
+            assert!(opens <= MAX_DEPTH, "{tag}: {opens} levels kept");
+        }
+    }
+
+    #[test]
+    fn test_shallow_markup_untouched_by_depth_cap() {
+        let html = "<div><p>keep <b>bold</b> and <a href='https://x.test'>link</a></p></div>";
+        assert_eq!(strip_non_prose(html), Html::parse_document(html).html());
     }
 
     #[test]
@@ -227,3 +292,4 @@ mod tests {
         assert_eq!(extract_clean(md, "text/markdown").unwrap().as_bytes(), md);
     }
 }
+

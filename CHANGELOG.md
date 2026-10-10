@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed - deeply nested pages no longer crash webguard
+
+A page with about 5000 nested tags overflowed the stack in the HTML to
+markdown converter, which aborts the whole process rather than failing the
+fetch. Elements deeper than 512 levels (Chromium's parser cap) are now
+unwrapped before conversion: their text stays in place and is still scanned,
+only the excess tags are dropped.
+
 ## 0.5.5 - 2026-10-10
 
 ### Added - audit tag for synthetic traffic
