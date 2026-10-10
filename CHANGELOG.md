@@ -10,11 +10,14 @@ of the text without markdown inline markup (`**`, `_`, `` ` ``, `~`, `\`,
 brackets, link destinations, with a link's title joined to its text) is
 scanned as an extra view, so `ignore \[previous\] instructions` and
 `[ignore](x "previous instructions")` match. The view comes from a CommonMark
-parser, so image alt text counts, code stays literal, and a regex such as
-`ignore[ _]previous` is not rewritten into the phrase. Inline elements now
+parser, so image alt text counts and code stays literal. In prose a bracket
+is dropped only inside a word (`i]g[n]o[r]e`) or as a pair hugging a word
+(`[previous]`), so a regex such as `ignore[ ]previous` is not rewritten into
+the phrase. Inline elements now
 include `label`, `button`, `ruby` and custom elements; `img` contributes its
-alt text. Invisible format characters (U+200E/F, U+2060-2064, variation
-selectors, Hangul fillers and similar) are stripped before matching without
+alt text. Invisible format characters (U+200E/F, U+2060-2064, bidi controls,
+variation selectors, Hangul fillers and similar) are stripped before matching
+in every view, including raw attributes, comments and decoded blobs, without
 counting as zero-width obfuscation. One hit seen in several views counts once
 even when the views differ only in markup. Marker fixtures are back to
 marker-only content and test detection.
