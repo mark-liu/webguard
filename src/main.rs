@@ -4,6 +4,7 @@ mod audit;
 mod classify;
 mod config;
 mod fetch;
+mod html;
 mod server;
 
 use clap::Parser;

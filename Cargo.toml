@@ -29,6 +29,8 @@ regex = "1"
 
 # HTML processing
 scraper = "0.23"
+# Same version scraper builds on, so HtmlTreeSink fits its driver.
+html5ever = "0.29"
 htmd = "0.1"
 pulldown-cmark = { version = "0.13", default-features = false }
 

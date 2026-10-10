@@ -77,3 +77,26 @@ pub struct Result {
     pub stage: u8,
     pub timing_ms: f64,
 }
+
+pub const PARSE_BUDGET_ID: &str = "parse-budget";
+
+impl Result {
+    /// Block for input whose HTML parse ran past `html::PARSE_BUDGET`; the
+    /// synthetic match names the cause in the audit log and the block notice.
+    pub fn parse_budget_block() -> Self {
+        Result {
+            verdict: Verdict::Block,
+            score: 0.0,
+            matches: vec![Match {
+                pattern_id: PARSE_BUDGET_ID.into(),
+                category: PARSE_BUDGET_ID.into(),
+                severity: Severity::Critical,
+                text: String::new(),
+                offset: 0,
+                from_decoded: false,
+            }],
+            stage: 1,
+            timing_ms: 0.0,
+        }
+    }
+}

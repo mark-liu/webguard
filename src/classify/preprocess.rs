@@ -4,6 +4,8 @@ use std::borrow::Cow;
 use std::sync::LazyLock;
 use unicode_normalization::UnicodeNormalization;
 
+use crate::html::BudgetExceeded;
+
 use super::encoding::{EncodedBlob, decode_hex_sequences, decode_url_encoded, detect_base64};
 
 static HTML_COMMENT_RE: LazyLock<Regex> =
@@ -52,7 +54,8 @@ pub struct PreprocessResult {
     pub zero_width_count: usize,
 }
 
-pub fn preprocess(raw: &str) -> PreprocessResult {
+/// `Err` when the HTML parse ran past its budget: the engine blocks unscanned.
+pub fn preprocess(raw: &str) -> Result<PreprocessResult, BudgetExceeded> {
     // Step 1: Preserve raw text (patterns like <<SYS>> destroyed by HTML parser)
     let raw_text = fold_unicode(raw).into_owned();
 
@@ -60,7 +63,7 @@ pub fn preprocess(raw: &str) -> PreprocessResult {
     let html_comments = extract_html_comments(&raw_text);
 
     // Step 3: Strip HTML tags
-    let text = strip_html_tags(raw);
+    let text = strip_html_tags(raw)?;
 
     // Step 4: Decode HTML entities
     let text = htmlescape::decode_html(&text).unwrap_or(text);
@@ -87,14 +90,14 @@ pub fn preprocess(raw: &str) -> PreprocessResult {
     let clean_text = strip_zero_width(&text);
     let demarked_text = demark(&clean_text);
 
-    PreprocessResult {
+    Ok(PreprocessResult {
         clean_text,
         demarked_text,
         raw_text,
         html_comments,
         decoded_blobs,
         zero_width_count,
-    }
+    })
 }
 
 pub fn extract_html_comments(s: &str) -> Vec<String> {
@@ -117,8 +120,8 @@ fn is_inline(name: &str) -> bool {
     INLINE_ELEMENTS.contains(&name) || name.contains('-')
 }
 
-pub fn strip_html_tags(s: &str) -> String {
-    let fragment = scraper::Html::parse_fragment(s);
+pub fn strip_html_tags(s: &str) -> Result<String, BudgetExceeded> {
+    let fragment = crate::html::parse_fragment(s, crate::html::PARSE_BUDGET)?;
     let mut text = String::with_capacity(s.len());
     let sep = |text: &mut String| {
         if !text.is_empty() && !text.ends_with(char::is_whitespace) {
@@ -144,7 +147,7 @@ pub fn strip_html_tags(s: &str) -> String {
         }
         stack.extend(node.children().rev().map(|c| (c, false)));
     }
-    text.trim().to_string()
+    Ok(text.trim().to_string())
 }
 
 /// demark returns the text a markdown reader sees with inline markup gone, or
@@ -291,12 +294,12 @@ mod tests {
     #[test]
     fn test_html_tag_stripping() {
         // Simple tags
-        let result = strip_html_tags("<p>Hello</p> <b>world</b>");
+        let result = strip_html_tags("<p>Hello</p> <b>world</b>").unwrap();
         assert!(result.contains("Hello"));
         assert!(result.contains("world"));
 
         // No tags
-        let result = strip_html_tags("plain text");
+        let result = strip_html_tags("plain text").unwrap();
         assert!(result.contains("plain text"));
     }
 
@@ -389,7 +392,7 @@ mod tests {
     #[test]
     fn test_preprocess_pipeline() {
         let input = "<!-- hidden --> <p>Hello &amp; world</p> \u{200B}test";
-        let result = preprocess(input);
+        let result = preprocess(input).unwrap();
 
         assert_eq!(result.html_comments, vec!["hidden"]);
         assert!(result.clean_text.contains("Hello"));
@@ -411,17 +414,25 @@ mod split_word_tests {
 
     #[test]
     fn inline_tags_join_block_tags_separate() {
-        assert_eq!(strip_html_tags("ig<b>no</b>re"), "ignore");
-        assert_eq!(strip_html_tags("a<span>b</span><em>c</em>"), "abc");
-        assert_eq!(strip_html_tags("<p>one</p><p>two</p>").trim(), "one two");
-        assert_eq!(strip_html_tags("one<br>two").trim(), "one two");
-        assert_eq!(strip_html_tags("ig<img alt=\"no\" src=x>re"), "ignore");
+        assert_eq!(strip_html_tags("ig<b>no</b>re").unwrap(), "ignore");
+        assert_eq!(strip_html_tags("a<span>b</span><em>c</em>").unwrap(), "abc");
         assert_eq!(
-            strip_html_tags("ig<label>no</label><x-y>re</x-y>"),
+            strip_html_tags("<p>one</p><p>two</p>").unwrap().trim(),
+            "one two"
+        );
+        assert_eq!(strip_html_tags("one<br>two").unwrap().trim(), "one two");
+        assert_eq!(
+            strip_html_tags("ig<img alt=\"no\" src=x>re").unwrap(),
             "ignore"
         );
         assert_eq!(
-            strip_html_tags("<div>x</div>\n<div>y</div>").trim(),
+            strip_html_tags("ig<label>no</label><x-y>re</x-y>").unwrap(),
+            "ignore"
+        );
+        assert_eq!(
+            strip_html_tags("<div>x</div>\n<div>y</div>")
+                .unwrap()
+                .trim(),
             "x \ny"
         );
     }
@@ -445,7 +456,9 @@ mod split_word_tests {
             assert_eq!(engine.classify(&text).verdict, Verdict::Block, "{c:?}");
         }
         assert_eq!(
-            preprocess("I \u{2764}\u{FE0F} this \u{200F}").zero_width_count,
+            preprocess("I \u{2764}\u{FE0F} this \u{200F}")
+                .unwrap()
+                .zero_width_count,
             0
         );
     }
@@ -467,7 +480,7 @@ mod split_word_tests {
     #[test]
     fn deep_nesting_does_not_recurse() {
         let html = "<b>".repeat(200_000) + "deep" + &"</b>".repeat(200_000);
-        assert!(strip_html_tags(&html).contains("deep"));
+        assert!(strip_html_tags(&html).unwrap().contains("deep"));
     }
 
     #[test]

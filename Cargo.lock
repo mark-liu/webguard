@@ -2534,6 +2534,7 @@ dependencies = [
  "clap",
  "futures-util",
  "htmd",
+ "html5ever 0.29.1",
  "htmlescape",
  "ipnetwork",
  "percent-encoding",

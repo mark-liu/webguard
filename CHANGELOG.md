@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed - deeply nested pages no longer burn minutes of CPU
+
+html5ever's tree builder is quadratic in nesting depth, so a page of
+100k nested tags took about 14 s per parse and a 5 MiB one ran for many
+minutes. Every HTML parse now runs against a 2 s budget, fed in 16 KiB
+chunks. A page that runs over is blocked as `parse-budget` (critical),
+logged like any match, and is never delivered raw: before, a failed
+extraction fell back to the raw body. A large script or JSON body full of
+unclosed tags can trip it too; the audit log names any such block.
+
 ## 0.5.6 - 2026-10-10
 
 ### Fixed - "New instructions:" docs labels no longer block

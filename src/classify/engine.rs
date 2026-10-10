@@ -78,7 +78,12 @@ impl Engine {
         let start = Instant::now();
 
         // Preprocess
-        let pp = preprocess(content);
+        let Ok(pp) = preprocess(content) else {
+            return Result {
+                timing_ms: start.elapsed().as_secs_f64() * 1000.0,
+                ..Result::parse_budget_block()
+            };
+        };
 
         // Stage 1: pattern matching
         let matches = scan_stage1(&pp, &self.compiled);

@@ -2,10 +2,11 @@ use regex::Regex;
 use scraper::{Html, Node};
 use std::sync::LazyLock;
 
+use crate::html::{self, BudgetExceeded};
+
 static EXCESSIVE_NEWLINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
 
 const FORBIDDEN_TAGS: &[&str] = &["script", "style", "svg", "noscript", "iframe"];
-const BOILERPLATE_TAGS: &[&str] = &["nav", "header", "footer", "aside"];
 
 /// True for bodies that are not HTML and must not go through htmd, which
 /// collapses newlines, escapes `[x]` and drops `<email>` as a tag.
@@ -48,64 +49,47 @@ pub fn is_verbatim_type(content_type: &str) -> bool {
 /// keeps tags and layout markup (which htmd rewrites) but drops the inline-JS
 /// text behind the fromCharCode false positives. Same parse as delivery, so
 /// nothing the model reads can fall out of this view.
-pub fn strip_non_prose(html: &str) -> String {
+pub fn strip_non_prose(html: &str) -> Result<String, BudgetExceeded> {
     prune(html, FORBIDDEN_TAGS)
 }
 
+const CLEAN_TAGS: &[&str] = &[
+    "script", "style", "svg", "noscript", "iframe", "nav", "header", "footer", "aside",
+];
+
 /// Extract content for security scanning (full content, no boilerplate removal).
-pub fn extract(html_content: &[u8], content_type: &str) -> std::result::Result<String, String> {
-    if is_verbatim_type(content_type) {
-        return Ok(String::from_utf8_lossy(html_content).into_owned());
-    }
-    let html_str = String::from_utf8_lossy(html_content);
-
-    // Strip forbidden tags from HTML before conversion
-    let cleaned = prune(&html_str, FORBIDDEN_TAGS);
-
-    // Convert to markdown
-    let md = htmd::convert(&cleaned).map_err(|e| format!("markdown conversion error: {e}"))?;
-
-    // Collapse excessive newlines
-    let md = EXCESSIVE_NEWLINES
-        .replace_all(&md, "\n\n")
-        .trim()
-        .to_string();
-
-    Ok(md)
+pub fn extract(html_content: &[u8], content_type: &str) -> Result<String, BudgetExceeded> {
+    render(html_content, content_type, FORBIDDEN_TAGS)
 }
 
 /// Extract clean content for output (boilerplate removed).
-pub fn extract_clean(
-    html_content: &[u8],
-    content_type: &str,
-) -> std::result::Result<String, String> {
+pub fn extract_clean(html_content: &[u8], content_type: &str) -> Result<String, BudgetExceeded> {
+    render(html_content, content_type, CLEAN_TAGS)
+}
+
+/// Markdown of the body minus `tags`. `Err` only when the parse ran past its
+/// budget: that body is hostile and must never reach the model raw. A htmd
+/// failure falls back to the raw body, which the classifier still scans.
+fn render(body: &[u8], content_type: &str, tags: &[&str]) -> Result<String, BudgetExceeded> {
+    let raw = String::from_utf8_lossy(body);
     if is_verbatim_type(content_type) {
-        return Ok(String::from_utf8_lossy(html_content).into_owned());
+        return Ok(raw.into_owned());
     }
-    let html_str = String::from_utf8_lossy(html_content);
-
-    // Strip forbidden + boilerplate tags
-    let all_tags: Vec<&str> = FORBIDDEN_TAGS
-        .iter()
-        .chain(BOILERPLATE_TAGS.iter())
-        .copied()
-        .collect();
-    let cleaned = prune(&html_str, &all_tags);
-
-    let md = htmd::convert(&cleaned).map_err(|e| format!("markdown conversion error: {e}"))?;
-    let md = EXCESSIVE_NEWLINES
-        .replace_all(&md, "\n\n")
-        .trim()
-        .to_string();
-
-    Ok(md)
+    let cleaned = prune(&raw, tags)?;
+    Ok(match htmd::convert(&cleaned) {
+        Ok(md) => EXCESSIVE_NEWLINES
+            .replace_all(&md, "\n\n")
+            .trim()
+            .to_string(),
+        Err(_) => raw.into_owned(),
+    })
 }
 
 /// Detach every `tags` element and every comment from one html5ever parse and
 /// re-serialise. A regex or string replace disagrees with the tokenizer on
 /// attribute-quoted markers, odd end tags and foreign-content breakout.
-fn prune(html: &str, tags: &[&str]) -> String {
-    let mut doc = Html::parse_document(html);
+fn prune(html: &str, tags: &[&str]) -> Result<String, BudgetExceeded> {
+    let mut doc = html::parse_document(html, html::PARSE_BUDGET)?;
     let doomed: Vec<_> = doc
         .tree
         .nodes()
@@ -122,7 +106,7 @@ fn prune(html: &str, tags: &[&str]) -> String {
         }
     }
     flatten_deep(&mut doc);
-    doc.html()
+    Ok(doc.html())
 }
 
 /// Chromium's parser depth cap. htmd recurses per element and aborts the whole
@@ -143,7 +127,13 @@ fn flatten_deep(doc: &mut Html) {
         stack.extend(kids.into_iter().rev().map(|c| (c, depth + 1)));
     }
     for id in deep {
-        let kids: Vec<_> = doc.tree.get(id).unwrap().children().map(|c| c.id()).collect();
+        let kids: Vec<_> = doc
+            .tree
+            .get(id)
+            .unwrap()
+            .children()
+            .map(|c| c.id())
+            .collect();
         let mut node = doc.tree.get_mut(id).unwrap();
         for kid in kids {
             node.insert_id_before(kid);
@@ -196,18 +186,15 @@ mod tests {
     #[test]
     fn test_deep_nesting_flattened() {
         // 2 MiB matches a tokio worker; 5000 levels aborted the process before the cap.
+        // Deeper pages trip the parse budget in debug builds, so stay near the cliff.
         let run = |tag: &'static str| {
             std::thread::Builder::new()
                 .stack_size(2 << 20)
                 .spawn(move || {
-                    let html = format!(
-                        "{}deep text{}",
-                        format!("<{tag}>").repeat(20_000),
-                        format!("</{tag}>").repeat(20_000)
-                    );
+                    let html = html::nested(tag, 6_000, "deep text");
                     let full = extract(html.as_bytes(), "text/html").unwrap();
                     let clean = extract_clean(html.as_bytes(), "text/html").unwrap();
-                    let stripped = strip_non_prose(&html);
+                    let stripped = strip_non_prose(&html).unwrap();
                     (full, clean, stripped)
                 })
                 .unwrap()
@@ -227,7 +214,10 @@ mod tests {
     #[test]
     fn test_shallow_markup_untouched_by_depth_cap() {
         let html = "<div><p>keep <b>bold</b> and <a href='https://x.test'>link</a></p></div>";
-        assert_eq!(strip_non_prose(html), Html::parse_document(html).html());
+        assert_eq!(
+            strip_non_prose(html).unwrap(),
+            Html::parse_document(html).html()
+        );
     }
 
     #[test]
@@ -292,4 +282,3 @@ mod tests {
         assert_eq!(extract_clean(md, "text/markdown").unwrap().as_bytes(), md);
     }
 }
-
