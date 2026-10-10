@@ -61,6 +61,10 @@ pub fn scan_stage1(pp: &PreprocessResult, compiled: &CompiledPatterns) -> Vec<Ma
     // offsets from different texts are not comparable.
     let mut sources: Vec<Vec<Match>> = vec![scan_text(&pp.clean_text, false, compiled)];
 
+    if let Some(demarked) = &pp.demarked_text {
+        sources.push(scan_text(demarked, false, compiled));
+    }
+
     // Raw text preserves patterns like <<SYS>> that HTML parsing destroys
     if pp.raw_text != pp.clean_text {
         sources.push(scan_text(&pp.raw_text, false, compiled));
