@@ -225,6 +225,7 @@ cgnat_host_suffixes:
 - All resolved addresses must pass, so a matching name that also returns a blocked address (for example an IPv6 unique-local record) is still refused.
 
 Environment: `WEBGUARD_DEFAULT_MAX_CHARS` overrides the 50000-char response cap applied when a caller omits `max_chars` (a 25k-token MCP result is spilled to a file by the client and never reaches the model as text).
+`WEBGUARD_AUDIT_TAG` labels every audit row the process writes (`[A-Za-z0-9._-]`, 64 chars); `webguard_report` leaves tagged rows out and prints how many it skipped. Set it for replays and canaries so they do not skew block rates.
 
 ## External Patterns
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.5 - 2026-10-10
+
+### Added - audit tag for synthetic traffic
+
+`WEBGUARD_AUDIT_TAG` writes a `tag` field on every audit row, and
+`webguard_report` excludes tagged rows from its counts and says how many it
+skipped, so replays and canaries no longer skew block rates. Same contract as
+mcpguard's `MCPGUARD_AUDIT_TAG`. Old rows parse unchanged.
+
 ## 0.5.4 - 2026-10-10
 
 ### Fixed - markup that splits a phrase no longer hides it

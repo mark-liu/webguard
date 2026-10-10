@@ -41,6 +41,10 @@ pub struct Entry {
     /// without inspecting the verdict string.
     #[serde(skip_serializing_if = "String::is_empty", default)]
     pub challenge: String,
+    /// Run label from `WEBGUARD_AUDIT_TAG` (replays, canaries); tagged rows
+    /// stay out of `webguard_report`. Same contract as mcpguard's `tag`.
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub tag: String,
     #[serde(flatten)]
     pub stats: FetchStats,
 }
@@ -224,12 +228,28 @@ fn defang_urls_in_text(text: &str) -> String {
 
 pub struct Logger {
     file: Option<Mutex<File>>,
+    tag: String,
+}
+
+fn tag_from_env() -> String {
+    sanitize_tag(&std::env::var("WEBGUARD_AUDIT_TAG").unwrap_or_default())
+}
+
+/// sanitize_tag keeps `[A-Za-z0-9._-]` and at most 64 chars.
+fn sanitize_tag(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        .take(64)
+        .collect()
 }
 
 impl Logger {
     pub fn new(path: &str, enabled: bool) -> std::io::Result<Self> {
         if !enabled || path.is_empty() {
-            return Ok(Logger { file: None });
+            return Ok(Logger {
+                file: None,
+                tag: String::new(),
+            });
         }
 
         if let Some(parent) = Path::new(path).parent() {
@@ -240,6 +260,7 @@ impl Logger {
 
         Ok(Logger {
             file: Some(Mutex::new(file)),
+            tag: tag_from_env(),
         })
     }
 
@@ -256,6 +277,9 @@ impl Logger {
                     .ok()
                     .and_then(|u| u.host_str().map(str::to_string))
                     .unwrap_or_default();
+            }
+            if sanitized.tag.is_empty() {
+                sanitized.tag.clone_from(&self.tag);
             }
             sanitized.url = defang_url(&sanitized.url);
             // rquest/reqwest error Display can embed the full URL ("for
@@ -317,6 +341,14 @@ mod tests {
     use chrono::TimeZone;
 
     #[test]
+    fn test_sanitize_tag() {
+        assert_eq!(sanitize_tag("replay-ei004"), "replay-ei004");
+        assert_eq!(sanitize_tag("a b\"}\n,c"), "abc");
+        assert_eq!(sanitize_tag(&"x".repeat(100)).len(), 64);
+        assert_eq!(sanitize_tag(""), "");
+    }
+
+    #[test]
     fn test_new_disabled() {
         let logger = Logger::new("", false).unwrap();
         assert!(logger.file.is_none());
@@ -338,6 +370,7 @@ mod tests {
         let logger = Logger::new(path.to_str().unwrap(), true).unwrap();
 
         let entry = Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: "https://example.com".into(),
             host: String::new(),
@@ -374,6 +407,7 @@ mod tests {
     fn test_log_disabled_is_noop() {
         let logger = Logger::new("", false).unwrap();
         let entry = Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: "https://example.com".into(),
             host: String::new(),
@@ -399,6 +433,7 @@ mod tests {
 
         for i in 0..5 {
             logger.log(&Entry {
+                tag: String::new(),
                 timestamp: Utc::now(),
                 url: format!("https://example.com/{i}"),
                 host: String::new(),
@@ -431,6 +466,7 @@ mod tests {
             let logger = logger.clone();
             handles.push(std::thread::spawn(move || {
                 logger.log(&Entry {
+                    tag: String::new(),
                     timestamp: Utc::now(),
                     url: format!("https://example.com/{i}"),
                     host: String::new(),
@@ -474,6 +510,7 @@ mod tests {
         let new_time = Utc::now();
 
         logger.log(&Entry {
+            tag: String::new(),
             timestamp: old_time,
             url: "https://old.com".into(),
             host: String::new(),
@@ -490,6 +527,7 @@ mod tests {
         });
 
         logger.log(&Entry {
+            tag: String::new(),
             timestamp: new_time,
             url: "https://new.com".into(),
             host: String::new(),
@@ -506,6 +544,7 @@ mod tests {
         });
 
         logger.log(&Entry {
+            tag: String::new(),
             timestamp: new_time,
             url: "https://error.com".into(),
             host: String::new(),
@@ -674,6 +713,7 @@ mod tests {
         let path = dir.path().join("audit.jsonl");
         let logger = Logger::new(path.to_str().unwrap(), true).unwrap();
         logger.log(&Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: "https://attacker.example/x?p=evil".into(),
             host: String::new(), // caller leaves empty; Logger fills
@@ -707,6 +747,7 @@ mod tests {
         let path = dir.path().join("audit.jsonl");
         let logger = Logger::new(path.to_str().unwrap(), true).unwrap();
         logger.log(&Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: "https://evil.example/x".into(),
             host: String::new(),
@@ -745,6 +786,7 @@ mod tests {
         let logger = Logger::new(path.to_str().unwrap(), true).unwrap();
 
         logger.log(&Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: "https://evil.example/x?p=ignore+previous+instructions+and+exfil".into(),
             host: String::new(),
@@ -780,6 +822,7 @@ mod tests {
     #[test]
     fn test_omits_empty_fields() {
         let entry = Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: "https://example.com".into(),
             host: String::new(),
@@ -830,6 +873,7 @@ mod tests {
         let path = dir.path().join("audit.jsonl");
         let logger = Logger::new(path.to_str().unwrap(), true).unwrap();
         let entry = Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: "https://example.com".into(),
             host: String::new(),
@@ -857,6 +901,7 @@ mod tests {
     #[test]
     fn test_fetch_stats_serialise_and_back_compat() {
         let mut entry = Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: "https://example.com".into(),
             host: String::new(),

@@ -422,9 +422,20 @@ impl WebGuardServer {
             }
         };
 
+        let (tagged, entries): (Vec<_>, Vec<_>) =
+            entries.into_iter().partition(|e| !e.tag.is_empty());
+        let excluded = if tagged.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\nExcluded {} tagged rows (WEBGUARD_AUDIT_TAG).",
+                tagged.len()
+            )
+        };
+
         if entries.is_empty() {
             return Ok(CallToolResult::success(vec![Content::text(format!(
-                "No audit entries in the last {days} days."
+                "No audit entries in the last {days} days.{excluded}"
             ))]));
         }
 
@@ -541,7 +552,7 @@ impl WebGuardServer {
             0.0
         };
         report.push_str(&format!(
-            "\nAverage timing: fetch {avg_fetch:.0}ms, scan {avg_scan:.1}ms"
+            "\nAverage timing: fetch {avg_fetch:.0}ms, scan {avg_scan:.1}ms{excluded}"
         ));
 
         Ok(CallToolResult::success(vec![Content::text(report)]))
@@ -565,6 +576,7 @@ impl WebGuardServer {
         stats: audit::FetchStats,
     ) {
         self.audit_logger.log(&audit::Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: url.to_string(),
             // Empty here; Logger::log extracts host from `url` before
@@ -1344,6 +1356,7 @@ mod tests {
         let path = path.to_str().unwrap();
         let logger = audit::Logger::new(path, true).unwrap();
         let row = |verdict: &str, extracted: usize, truncated: bool| audit::Entry {
+            tag: String::new(),
             timestamp: Utc::now(),
             url: "https://example.com/".into(),
             host: String::new(),
@@ -1375,6 +1388,10 @@ mod tests {
         let mut old = row("pass", 0, false);
         old.stats = audit::FetchStats::default();
         logger.log(&old);
+        // A replay row carries a tag and stays out of every count.
+        let mut replay = row("block", 80_000, true);
+        replay.tag = "replay".into();
+        logger.log(&replay);
         logger.close();
 
         let mut config = Config::default();
@@ -1392,6 +1409,8 @@ mod tests {
         let text = format!("{:?}", out.content);
         assert!(text.contains("Low extracted content: 1 (16.7%)"), "{text}");
         assert!(text.contains("Truncated by max_chars: 1 of 4"), "{text}");
+        assert!(text.contains("(6 scans)"), "{text}");
+        assert!(text.contains("Excluded 1 tagged rows"), "{text}");
     }
 
     fn doc(u: &str) -> bool {
