@@ -1,15 +1,8 @@
 use regex::Regex;
-use scraper::{Html, Selector};
+use scraper::{Html, Node};
 use std::sync::LazyLock;
 
 static EXCESSIVE_NEWLINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
-
-static NON_PROSE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?is)<!--.*?-->|<(script|style|noscript|svg|iframe)\b[^>]*>.*?</\s*(?:script|style|noscript|svg|iframe)\s*>",
-    )
-    .unwrap()
-});
 
 const FORBIDDEN_TAGS: &[&str] = &["script", "style", "svg", "noscript", "iframe"];
 const BOILERPLATE_TAGS: &[&str] = &["nav", "header", "footer", "aside"];
@@ -53,10 +46,10 @@ pub fn is_verbatim_type(content_type: &str) -> bool {
 
 /// Raw HTML minus script/style/noscript/svg/iframe elements and comments:
 /// keeps tags and layout markup (which htmd rewrites) but drops the inline-JS
-/// text behind the fromCharCode false positives. Unclosed elements stay, so
-/// a miss errs toward scanning.
+/// text behind the fromCharCode false positives. Same parse as delivery, so
+/// nothing the model reads can fall out of this view.
 pub fn strip_non_prose(html: &str) -> String {
-    NON_PROSE_RE.replace_all(html, " ").into_owned()
+    prune(html, FORBIDDEN_TAGS)
 }
 
 /// Extract content for security scanning (full content, no boilerplate removal).
@@ -67,7 +60,7 @@ pub fn extract(html_content: &[u8], content_type: &str) -> std::result::Result<S
     let html_str = String::from_utf8_lossy(html_content);
 
     // Strip forbidden tags from HTML before conversion
-    let cleaned = strip_tags(&html_str, FORBIDDEN_TAGS);
+    let cleaned = prune(&html_str, FORBIDDEN_TAGS);
 
     // Convert to markdown
     let md = htmd::convert(&cleaned).map_err(|e| format!("markdown conversion error: {e}"))?;
@@ -97,7 +90,7 @@ pub fn extract_clean(
         .chain(BOILERPLATE_TAGS.iter())
         .copied()
         .collect();
-    let cleaned = strip_tags(&html_str, &all_tags);
+    let cleaned = prune(&html_str, &all_tags);
 
     let md = htmd::convert(&cleaned).map_err(|e| format!("markdown conversion error: {e}"))?;
     let md = EXCESSIVE_NEWLINES
@@ -108,20 +101,27 @@ pub fn extract_clean(
     Ok(md)
 }
 
-fn strip_tags(html: &str, tags: &[&str]) -> String {
-    let doc = Html::parse_document(html);
-    let mut html_out = html.to_string();
-
-    for tag in tags {
-        if let Ok(selector) = Selector::parse(tag) {
-            for element in doc.select(&selector) {
-                let outer_html = element.html();
-                html_out = html_out.replace(&outer_html, "");
-            }
+/// Detach every `tags` element and every comment from one html5ever parse and
+/// re-serialise. A regex or string replace disagrees with the tokenizer on
+/// attribute-quoted markers, odd end tags and foreign-content breakout.
+fn prune(html: &str, tags: &[&str]) -> String {
+    let mut doc = Html::parse_document(html);
+    let doomed: Vec<_> = doc
+        .tree
+        .nodes()
+        .filter(|n| match n.value() {
+            Node::Comment(_) => true,
+            Node::Element(el) => tags.contains(&el.name()),
+            _ => false,
+        })
+        .map(|n| n.id())
+        .collect();
+    for id in doomed {
+        if let Some(mut node) = doc.tree.get_mut(id) {
+            node.detach();
         }
     }
-
-    html_out
+    doc.html()
 }
 
 #[cfg(test)]

@@ -15,6 +15,16 @@ links, `<br>`, tables, lists, entity-encoded markers, a stray `<` swallowing a
 base64 blob). `raw=true` still scans the raw body unchanged. HTML comments are
 not delivered to the model, so they are scanned only with `raw=true`.
 
+### Fixed - element removal follows the HTML parser
+
+Script, style, noscript, svg, iframe and comment removal now detaches nodes
+from one html5ever parse instead of matching a regex or string-replacing
+serialised elements. The regex disagreed with the tokenizer on markers inside
+attribute values, `</script/>`, abrupt comments (`<!-->`, `--!>`), svg
+breakout and RCDATA, and could drop delivered text from the second scan;
+`<SCRIPT>`, `<noscript>` and unquoted-attribute `<svg>` content could reach
+the model. Extraction of a 5.6 MB page drops from about 30 s to under 2 s.
+
 ### Changed - enc-003 accepts hex char codes
 
 `String.fromCharCode(0x69, 0x67, ...)` now matches alongside decimal runs.
