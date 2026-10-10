@@ -3,7 +3,7 @@ use regex::Regex;
 use std::collections::HashMap;
 
 use super::patterns::{Pattern, PatternType};
-use super::preprocess::PreprocessResult;
+use super::preprocess::{PreprocessResult, strip_invisible};
 use super::result::Match;
 
 pub struct CompiledPatterns {
@@ -65,21 +65,25 @@ pub fn scan_stage1(pp: &PreprocessResult, compiled: &CompiledPatterns) -> Vec<Ma
         sources.push(scan_text(demarked, false, compiled));
     }
 
-    // Raw text preserves patterns like <<SYS>> that HTML parsing destroys
-    if pp.raw_text != pp.clean_text {
-        sources.push(scan_text(&pp.raw_text, false, compiled));
-    }
-
-    for comment in &pp.html_comments {
-        sources.push(scan_text(comment, false, compiled));
-    }
-
-    for blob in &pp.decoded_blobs {
-        let mut blob_matches = scan_text(&blob.decoded, false, compiled);
-        for m in &mut blob_matches {
-            m.from_decoded = true;
+    // Raw text preserves patterns like <<SYS>> that HTML parsing destroys.
+    // Side views are also scanned without invisible characters, which only
+    // clean_text drops; the original keeps them for the uo-* patterns.
+    let mut side = |text: &str, decoded: bool| {
+        let visible = strip_invisible(text);
+        for t in std::iter::once(text).chain(visible.as_deref()) {
+            let mut found = scan_text(t, false, compiled);
+            found.iter_mut().for_each(|m| m.from_decoded = decoded);
+            sources.push(found);
         }
-        sources.push(blob_matches);
+    };
+    if pp.raw_text != pp.clean_text {
+        side(&pp.raw_text, false);
+    }
+    for comment in &pp.html_comments {
+        side(comment, false);
+    }
+    for blob in &pp.decoded_blobs {
+        side(&blob.decoded, true);
     }
 
     merge_sources(sources)

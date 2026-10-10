@@ -195,18 +195,28 @@ pub fn count_zero_width(s: &str) -> usize {
 }
 
 /// Invisible format characters that split a word without counting as
-/// obfuscation: U+FE0F rides on every emoji and U+200E/F on RTL text.
+/// obfuscation: U+FE0F rides on every emoji and U+200E/F on RTL text. Bidi
+/// controls stay visible to uo-002 through the raw view.
 fn is_invisible_joiner(c: char) -> bool {
     matches!(c,
         '\u{034F}' | '\u{061C}' | '\u{115F}' | '\u{1160}' | '\u{17B4}' | '\u{17B5}'
-        | '\u{180E}' | '\u{200E}' | '\u{200F}' | '\u{2060}'..='\u{2064}' | '\u{3164}'
+        | '\u{180E}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}'
+        | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{2069}' | '\u{3164}'
         | '\u{FE00}'..='\u{FE0F}' | '\u{FFA0}')
 }
 
+fn is_invisible(c: char) -> bool {
+    ZERO_WIDTH_CHARS.contains(&c) || is_invisible_joiner(c)
+}
+
+/// strip_invisible returns `s` without invisible characters, or None if it has none.
+pub fn strip_invisible(s: &str) -> Option<String> {
+    s.contains(is_invisible)
+        .then(|| s.chars().filter(|&c| !is_invisible(c)).collect())
+}
+
 pub fn strip_zero_width(s: &str) -> String {
-    s.chars()
-        .filter(|&c| !ZERO_WIDTH_CHARS.contains(&c) && !is_invisible_joiner(c))
-        .collect()
+    s.chars().filter(|&c| !is_invisible(c)).collect()
 }
 
 #[cfg(test)]
