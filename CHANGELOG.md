@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.3 - 2026-10-10
 
 ### Fixed - panic on length-changing lowercase
 
