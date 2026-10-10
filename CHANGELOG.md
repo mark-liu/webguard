@@ -11,6 +11,8 @@ chunks. A page that runs over is blocked as `parse-budget` (critical),
 logged like any match, and is never delivered raw: before, a failed
 extraction fell back to the raw body. A large script or JSON body full of
 unclosed tags can trip it too; the audit log names any such block.
+The block holds in warn mode, and an external pattern file that uses the
+id `parse-budget` is rejected as invalid.
 
 ## 0.5.6 - 2026-10-10
 
