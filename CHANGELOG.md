@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.4 - 2026-10-10
 
 ### Fixed - markup that splits a phrase no longer hides it
 
@@ -18,8 +18,8 @@ include `label`, `button`, `ruby` and custom elements; `img` contributes its
 alt text. Invisible format characters (U+200E/F, U+2060-2064, bidi controls,
 variation selectors, Hangul fillers and similar) are stripped before matching
 in every view, including raw attributes, comments and decoded blobs, without
-counting as zero-width obfuscation; comments and decoded blobs also get the
-markdown-free view, and link titles lose their brackets too. Known gaps: a
+counting as zero-width obfuscation; comments, decoded blobs and comments
+inside decoded blobs also get the markdown-free view, and link titles lose their brackets too. Known gaps: a
 markdown split inside a raw HTML attribute (`title="ig[no](x)re ..."`) is not
 joined, since the parser reads an HTML block as opaque, and bracketed token
 lists such as `[ignore] [previous] [instructions]` now block, the cost of
