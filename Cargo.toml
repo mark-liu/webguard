@@ -109,3 +109,8 @@ runner = "macos-15-intel"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+
+# Debug-built html5ever is slow enough to flake the parse budget in tests
+[profile.dev.package."*"]
+opt-level = 3
