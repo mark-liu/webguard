@@ -30,6 +30,7 @@ regex = "1"
 # HTML processing
 scraper = "0.23"
 htmd = "0.1"
+pulldown-cmark = { version = "0.13", default-features = false }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -70,7 +71,6 @@ anyhow = "1"
 
 # JSON Schema (must match rmcp's re-exported version)
 schemars = "1"
-
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed - markup that splits a phrase no longer hides it
+
+Inline HTML elements (`ig<b>no</b>re`) now join the words on either side, as
+a browser renders them; only block elements and `<br>` separate text. A copy
+of the text without markdown inline markup (`**`, `_`, `` ` ``, `~`, `\`,
+brackets, link destinations, with a link's title joined to its text) is
+scanned as an extra view, so `ignore \[previous\] instructions` and
+`[ignore](x "previous instructions")` match. Marker fixtures are back to
+marker-only content and test detection.
+
 ## 0.5.3 - 2026-10-10
 
 ### Fixed - panic on length-changing lowercase
