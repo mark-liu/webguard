@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.7 - 2026-10-10
 
 ### Fixed - deeply nested pages no longer burn minutes of CPU
 
